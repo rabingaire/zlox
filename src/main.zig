@@ -25,6 +25,7 @@ pub fn main() !void {
     }
 }
 
+// TODO: fix type here figure out why can't I use [:0]const u8 type
 fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![]const u8 {
     const file = try std.fs.cwd().openFile(file_name, .{});
     const file_stats = try file.stat();
@@ -47,7 +48,7 @@ fn run(allocator: std.mem.Allocator, file_contents: []const u8) !void {
     for (tokens) |token| {
         std.debug.print(
             "Type: {any} Literal: {s}\n",
-            .{ token.token_type, file_contents[token.start..(token.end + 1)] },
+            .{ token.token_type, scanner.toLiteral(token) },
         );
         std.debug.print("\t{any}\n", .{token});
     }
