@@ -25,22 +25,21 @@ pub fn main() !void {
     }
 }
 
-// TODO: fix type here figure out why can't I use [:0]const u8 type
-fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![]const u8 {
+fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
     const file = try std.fs.cwd().openFile(file_name, .{});
-    const file_stats = try file.stat();
-    const byte_length = file_stats.size;
+    const size = @intCast(usize, try file.getEndPos());
 
-    const buffer = try allocator.alloc(u8, byte_length + 1);
+    const buffer = try allocator.alloc(u8, size);
     errdefer allocator.free(buffer);
 
-    _ = try file.readAll(buffer);
-    // TODO: look if there is better way to create null terminated string
-    buffer[byte_length] = 0;
-    return buffer;
+    const size_read = try file.readAll(buffer);
+    std.debug.assert(size == size_read);
+
+    buffer[size - 1] = 0;
+    return buffer[0 .. size - 1 :0];
 }
 
-fn run(allocator: std.mem.Allocator, file_contents: []const u8) !void {
+fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var scanner = lexer.Scanner.init(allocator, file_contents);
     const tokens = try scanner.scanTokens();
     defer allocator.free(tokens);

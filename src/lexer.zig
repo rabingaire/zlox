@@ -53,6 +53,8 @@ const Token = struct {
         EOF,
     };
 
+    const EOF = "EOF";
+
     const keywords = std.ComptimeStringMap(Type, .{
         .{ "and", .AND },
         .{ "class", .CLASS },
@@ -96,14 +98,14 @@ const Token = struct {
 pub const Scanner = struct {
     const Self = @This();
 
-    source: []const u8,
+    source: [:0]const u8,
     tokens: std.ArrayList(Token),
     start: u32 = 0,
     current: u32 = 0,
     line: u32 = 1,
     column: u32 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Self {
         return Self{
             .source = source,
             .tokens = std.ArrayList(Token).init(allocator),
@@ -111,6 +113,9 @@ pub const Scanner = struct {
     }
 
     pub fn toLiteral(self: *const Self, token: Token) []const u8 {
+        if (token.token_type == .EOF) {
+            return Token.EOF;
+        }
         return self.source[token.start..(token.end + 1)];
     }
 
@@ -317,7 +322,7 @@ pub const Scanner = struct {
     }
 
     fn isAtEnd(self: *const Self) bool {
-        return self.current >= self.source.len;
+        return self.current > self.source.len;
     }
 };
 
@@ -343,7 +348,7 @@ test "check if lexer is correct" {
     const tokens = try scanner.scanTokens();
     defer allocator.free(tokens);
 
-    try std.testing.expect(40 == tokens.len);
+    try std.testing.expect(41 == tokens.len);
 
     const expected_tokens = [_]Token{
         .{ .token_type = Token.Type.CLASS, .start = 0, .end = 4, .line = 1, .column = 1 },
@@ -386,7 +391,7 @@ test "check if lexer is correct" {
         .{ .token_type = Token.Type.EQUAL, .start = 229, .end = 229, .line = 13, .column = 18 },
         .{ .token_type = Token.Type.NUMBER, .start = 231, .end = 235, .line = 13, .column = 20 },
         .{ .token_type = Token.Type.SEMICOLON, .start = 236, .end = 236, .line = 13, .column = 25 },
-        .{ .token_type = Token.Type.EOF, .start = 238, .end = 238, .line = 14, .column = 1 },
+        .{ .token_type = Token.Type.EOF, .start = 237, .end = 237, .line = 13, .column = 26 },
     };
 
     const expected_literals = [_][]const u8{
@@ -430,7 +435,7 @@ test "check if lexer is correct" {
         "=",
         "1.234",
         ";",
-        "",
+        "EOF",
     };
 
     for (tokens, 0..) |token, index| {
