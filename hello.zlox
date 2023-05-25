@@ -11,3 +11,4 @@ class Breakfast {
 var breakfast = Breakfast();
 print breakfast; // "Breakfast instance".
 var randomnumber = 1.234;
+// cool comment

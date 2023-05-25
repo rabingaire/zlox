@@ -171,6 +171,9 @@ pub const Scanner = struct {
                         while (self.peek() != '\n' and !self.isAtEnd()) {
                             self.advance();
                         }
+                        if (self.isAtEnd()) {
+                            try self.addToken(.EOF, 1);
+                        }
                     } else {
                         try self.addToken(.SLASH, 1);
                     }
@@ -341,6 +344,7 @@ test "check if lexer is correct" {
         \\var breakfast = Breakfast();
         \\print breakfast; // "Breakfast instance".
         \\var randomnumber = 1.234;
+        \\// cool comment
     ;
     const allocator = std.testing.allocator;
 
@@ -391,7 +395,7 @@ test "check if lexer is correct" {
         .{ .token_type = Token.Type.EQUAL, .start = 229, .end = 229, .line = 13, .column = 18 },
         .{ .token_type = Token.Type.NUMBER, .start = 231, .end = 235, .line = 13, .column = 20 },
         .{ .token_type = Token.Type.SEMICOLON, .start = 236, .end = 236, .line = 13, .column = 25 },
-        .{ .token_type = Token.Type.EOF, .start = 237, .end = 237, .line = 13, .column = 26 },
+        .{ .token_type = Token.Type.EOF, .start = 238, .end = 238, .line = 14, .column = 16 },
     };
 
     const expected_literals = [_][]const u8{
