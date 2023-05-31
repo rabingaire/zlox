@@ -1,6 +1,7 @@
 const std = @import("std");
 
-const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
+const Parser = parser.Parser;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -40,15 +41,11 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 }
 
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
-    var scanner = lexer.Scanner.init(allocator, file_contents);
-    const tokens = try scanner.scanTokens();
-    defer allocator.free(tokens);
+    var zlox_parser = try Parser.init(allocator, file_contents);
+    defer allocator.free(zlox_parser.tokens);
 
-    for (tokens) |token| {
-        std.debug.print(
-            "Type: {any} Literal: {s}\n",
-            .{ token.token_type, scanner.toLiteral(token) },
-        );
-        std.debug.print("\t{any}\n", .{token});
-    }
+    const expression = zlox_parser.expression();
+
+    std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
+    std.debug.print("{any}\n", .{expression.binary});
 }

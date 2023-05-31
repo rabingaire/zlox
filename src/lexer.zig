@@ -1,9 +1,9 @@
 const std = @import("std");
 
-const Token = struct {
+pub const Token = struct {
     const Self = @This();
 
-    const Type = enum {
+    pub const Type = enum {
         // Single-character tokens.
         LEFT_PAREN,
         RIGHT_PAREN,
