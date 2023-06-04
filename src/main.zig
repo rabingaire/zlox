@@ -44,8 +44,9 @@ fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var zlox_parser = try Parser.init(allocator, file_contents);
     defer allocator.free(zlox_parser.tokens);
 
-    const expression = zlox_parser.expression();
+    var tree = try zlox_parser.parse();
+    defer tree.deinit(allocator);
 
     std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-    std.debug.print("{any}\n", .{expression.binary});
+    std.debug.print("{any}\n", .{tree});
 }
