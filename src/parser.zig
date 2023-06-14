@@ -5,6 +5,7 @@ const lexer = @import("lexer.zig");
 const Token = lexer.Token;
 const Scanner = lexer.Scanner;
 const ast = @import("ast.zig");
+const Ast = ast.Ast;
 const Expression = ast.Expression;
 
 pub const Parser = struct {
@@ -37,11 +38,18 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parse(self: *Self) !*Expression {
-        return try self.term();
+    pub fn deinit(self: *Self) void {
+        self.allocator.free(self.tokens);
     }
 
-    pub fn term(self: *Self) !*Expression {
+    pub fn parse(self: *Self) !Ast {
+        return Ast{
+            .allocator = self.allocator,
+            .root = try self.term(),
+        };
+    }
+
+    fn term(self: *Self) !*Expression {
         var expr = try self.factor();
         while (true) {
             const current_token = self.get_current_token();
@@ -50,22 +58,18 @@ pub const Parser = struct {
                 Token.Type.MINUS,
                 => {
                     self.advance();
-                    var new_expr = try self.allocator.create(Expression);
-                    new_expr.* = expr.*;
-                    expr.* = Expression{
-                        .binary = .{
-                            .left = new_expr,
-                            .operator = current_token,
-                            .right = try self.factor(),
-                        },
-                    };
+                    expr.addBinary(
+                        try expr.copy(self.allocator),
+                        current_token,
+                        try self.factor(),
+                    );
                 },
                 else => return expr,
             }
         }
     }
 
-    pub fn factor(self: *Self) !*Expression {
+    fn factor(self: *Self) !*Expression {
         var expr = try self.unary();
         while (true) {
             const current_token = self.get_current_token();
@@ -74,63 +78,53 @@ pub const Parser = struct {
                 Token.Type.STAR,
                 => {
                     self.advance();
-                    var new_expr = try self.allocator.create(Expression);
-                    new_expr.* = expr.*;
-                    expr.* = Expression{
-                        .binary = .{
-                            .left = new_expr,
-                            .operator = current_token,
-                            .right = try self.unary(),
-                        },
-                    };
+                    expr.addBinary(
+                        try expr.copy(self.allocator),
+                        current_token,
+                        try self.unary(),
+                    );
                 },
                 else => return expr,
             }
         }
     }
 
-    pub fn unary(self: *Self) !*Expression {
-        var expr = try self.allocator.create(Expression);
+    fn unary(self: *Self) !*Expression {
         const current_token = self.get_current_token();
         switch (current_token.token_type) {
             Token.Type.BANG,
             Token.Type.MINUS,
             => {
                 self.advance();
-                expr.* = Expression{
-                    .unary = .{
-                        .operator = current_token,
-                        .right = try self.unary(),
-                    },
-                };
+                var expr = try Expression.create(self.allocator);
+                expr.addUnary(current_token, try self.unary());
                 return expr;
             },
-            else => {
-                expr.* = self.primary();
-                return expr;
-            },
+            else => return try self.primary(),
         }
     }
 
-    pub fn primary(self: *Self) Expression {
+    fn primary(self: *Self) !*Expression {
         const current_token = self.get_current_token();
-        var expr = switch (current_token.token_type) {
-            Token.Type.TRUE => Expression{ .literal = .{ .boolean = true } },
-            Token.Type.FALSE => Expression{ .literal = .{ .boolean = false } },
+        var literal = switch (current_token.token_type) {
+            Token.Type.TRUE => Expression.Literal{ .boolean = true },
+            Token.Type.FALSE => Expression.Literal{ .boolean = false },
             Token.Type.NUMBER => blk: {
                 const value = std.fmt.parseFloat(
                     f64,
                     self.scanner.toLiteral(current_token),
                 ) catch unreachable;
-                break :blk Expression{ .literal = .{ .number = value } };
+                break :blk Expression.Literal{ .number = value };
             },
-            Token.Type.STRING => Expression{ .literal = .{
+            Token.Type.STRING => Expression.Literal{
                 .string = self.scanner.toLiteral(current_token),
-            } },
-            Token.Type.NIL => Expression{ .literal = .{ .nil = {} } },
+            },
+            Token.Type.NIL => Expression.Literal{ .nil = {} },
             else => unreachable,
         };
         self.advance();
+        var expr = try Expression.create(self.allocator);
+        expr.addLiteral(literal);
         return expr;
     }
 

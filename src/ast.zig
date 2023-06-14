@@ -3,6 +3,17 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
 
+pub const Ast = struct {
+    const Self = @This();
+
+    root: *Expression,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Self) void {
+        self.root.deinit(self.allocator);
+    }
+};
+
 pub const Expression = union(enum) {
     const Self = @This();
 
@@ -11,29 +22,18 @@ pub const Expression = union(enum) {
     grouping: Grouping,
     literal: Literal,
 
-    pub const Binary = struct {
-        left: *Self,
-        operator: Token,
-        right: *Self,
-    };
+    pub fn create(allocator: std.mem.Allocator) !*Self {
+        var new = try allocator.create(Self);
+        return new;
+    }
 
-    pub const Unary = struct {
-        operator: Token,
-        right: *Self,
-    };
+    pub fn copy(self: Self, allocator: std.mem.Allocator) !*Self {
+        var new = try create(allocator);
+        new.* = self;
+        return new;
+    }
 
-    pub const Grouping = struct {
-        expression: *Self,
-    };
-
-    pub const Literal = union(enum) {
-        number: f64,
-        string: []const u8,
-        boolean: bool,
-        nil: void,
-    };
-
-    pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+    fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         defer allocator.destroy(self);
         switch (self.*) {
             .binary => {
@@ -49,4 +49,51 @@ pub const Expression = union(enum) {
             else => {},
         }
     }
+
+    pub fn addBinary(self: *Self, left: *Self, operator: Token, right: *Self) void {
+        self.* = Self{
+            .binary = .{
+                .left = left,
+                .operator = operator,
+                .right = right,
+            },
+        };
+    }
+
+    pub fn addUnary(self: *Self, operator: Token, right: *Self) void {
+        self.* = Self{
+            .unary = .{
+                .operator = operator,
+                .right = right,
+            },
+        };
+    }
+
+    pub fn addLiteral(self: *Self, literal: Literal) void {
+        self.* = Self{
+            .literal = literal,
+        };
+    }
+
+    const Binary = struct {
+        left: *Self,
+        operator: Token,
+        right: *Self,
+    };
+
+    const Unary = struct {
+        operator: Token,
+        right: *Self,
+    };
+
+    const Grouping = struct {
+        expression: *Self,
+    };
+
+    pub const Literal = union(enum) {
+        number: f64,
+        string: []const u8,
+        boolean: bool,
+        nil: void,
+    };
 };

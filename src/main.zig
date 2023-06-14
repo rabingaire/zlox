@@ -42,11 +42,11 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var zlox_parser = try Parser.init(allocator, file_contents);
-    defer allocator.free(zlox_parser.tokens);
+    defer zlox_parser.deinit();
 
     var tree = try zlox_parser.parse();
-    defer tree.deinit(allocator);
+    defer tree.deinit();
 
     std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-    std.debug.print("{any}\n", .{tree});
+    std.debug.print("{any}\n", .{tree.root});
 }

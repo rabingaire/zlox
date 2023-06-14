@@ -74,7 +74,7 @@ pub const Token = struct {
         .{ "while", .WHILE },
     });
 
-    pub fn getKeyword(literal: []const u8) ?Type {
+    fn getKeyword(literal: []const u8) ?Type {
         return keywords.get(literal);
     }
 
@@ -84,7 +84,7 @@ pub const Token = struct {
     line: u32,
     column: u32,
 
-    pub fn init(token_type: Type, start: u32, end: u32, line: u32, column: u32) Self {
+    fn init(token_type: Type, start: u32, end: u32, line: u32, column: u32) Self {
         return Self{
             .token_type = token_type,
             .start = start,
