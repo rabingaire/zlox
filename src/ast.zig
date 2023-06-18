@@ -91,33 +91,33 @@ pub const Expression = union(enum) {
         nil: void,
     };
 
-    const Binary = struct {
+    pub const Binary = struct {
         left: *Self,
         operator: Token,
         right: *Self,
     };
 
-    const Unary = struct {
+    pub const Unary = struct {
         operator: Token,
         right: *Self,
     };
 
-    const Grouping = struct {
+    pub const Grouping = struct {
         expression: *Self,
     };
 
     fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         defer allocator.destroy(self);
         switch (self.*) {
-            .binary => {
-                self.binary.left.deinit(allocator);
-                self.binary.right.deinit(allocator);
+            .binary => |binary| {
+                binary.left.deinit(allocator);
+                binary.right.deinit(allocator);
             },
-            .unary => {
-                self.unary.right.deinit(allocator);
+            .unary => |unary| {
+                unary.right.deinit(allocator);
             },
-            .grouping => {
-                self.grouping.expression.deinit(allocator);
+            .grouping => |grouping| {
+                grouping.expression.deinit(allocator);
             },
             .literal => {},
         }
@@ -125,39 +125,39 @@ pub const Expression = union(enum) {
 
     fn debugPrint(self: *Self, allocator: std.mem.Allocator, source: [:0]const u8) ![]const u8 {
         return switch (self.*) {
-            .binary => blk: {
-                const left = try self.binary.left.debugPrint(
+            .binary => |binary| blk: {
+                const left = try binary.left.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(left);
-                const right = try self.binary.right.debugPrint(
+                const right = try binary.right.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(right);
-                const operator = Token.toLiteral(source, self.binary.operator);
+                const operator = Token.toLiteral(source, binary.operator);
                 break :blk try std.fmt.allocPrint(
                     allocator,
                     "( {s} {s} {s} )",
                     .{ left, operator, right },
                 );
             },
-            .unary => blk: {
-                const right = try self.unary.right.debugPrint(
+            .unary => |unary| blk: {
+                const right = try unary.right.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(right);
-                const operator = Token.toLiteral(source, self.unary.operator);
+                const operator = Token.toLiteral(source, unary.operator);
                 break :blk try std.fmt.allocPrint(
                     allocator,
                     "( {s} {s} )",
                     .{ operator, right },
                 );
             },
-            .grouping => blk: {
-                const expr = try self.grouping.expression.debugPrint(
+            .grouping => |grouping| blk: {
+                const expr = try grouping.expression.debugPrint(
                     allocator,
                     source,
                 );
@@ -168,21 +168,21 @@ pub const Expression = union(enum) {
                     .{expr},
                 );
             },
-            .literal => switch (self.literal) {
+            .literal => |literal| switch (literal) {
                 .number => try std.fmt.allocPrint(
                     allocator,
                     "{d}",
-                    .{self.literal.number},
+                    .{literal.number},
                 ),
                 .string => try std.fmt.allocPrint(
                     allocator,
-                    "{s}",
-                    .{self.literal.string},
+                    "\"{s}\"",
+                    .{literal.string},
                 ),
                 .boolean => try std.fmt.allocPrint(
                     allocator,
                     "{any}",
-                    .{self.literal.boolean},
+                    .{literal.boolean},
                 ),
                 .nil => try std.fmt.allocPrint(
                     allocator,

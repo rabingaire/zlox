@@ -2,6 +2,8 @@ const std = @import("std");
 
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
+const interpreter = @import("interpreter.zig");
+const Interpreter = interpreter.Interpreter;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -43,4 +45,6 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var tree = try Ast.parse(allocator, file_contents);
     defer tree.deinit();
+    const literal = try Interpreter.evaluate(allocator, tree.root);
+    Interpreter.print(allocator, literal);
 }
