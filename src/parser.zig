@@ -38,20 +38,13 @@ pub const Parser = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
-        self.allocator.free(self.tokens);
-    }
-
-    pub fn parse(self: *Self) !Ast {
-        var tree = Ast{
-            .allocator = self.allocator,
-            .root = try self.term(),
-        };
+    pub fn parseRoot(self: *Self) !*Expression {
+        var root = try self.term();
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-            std.debug.print("{any}\n", .{tree.root});
+            std.debug.print("{any}\n", .{root});
         }
-        return tree;
+        return root;
     }
 
     fn term(self: *Self) !*Expression {

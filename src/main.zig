@@ -1,8 +1,7 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
-const parser = @import("parser.zig");
-const Parser = parser.Parser;
+const ast = @import("ast.zig");
+const Ast = ast.Ast;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -42,9 +41,6 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 }
 
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
-    var zlox_parser = try Parser.init(allocator, file_contents);
-    defer zlox_parser.deinit();
-
-    var tree = try zlox_parser.parse();
+    var tree = try Ast.parse(allocator, file_contents);
     defer tree.deinit();
 }
