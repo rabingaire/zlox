@@ -11,7 +11,7 @@ const Expression = ast.Expression;
 pub const Parser = struct {
     const Self = @This();
 
-    scanner: Scanner,
+    source: [:0]const u8,
     tokens: []Token,
     allocator: std.mem.Allocator,
     current: u32 = 0,
@@ -25,15 +25,15 @@ pub const Parser = struct {
             for (tokens) |token| {
                 std.debug.print(
                     "Type: {any} Literal: {s}\n",
-                    .{ token.token_type, scanner.toLiteral(token) },
+                    .{ token.token_type, Token.toLiteral(source, token) },
                 );
                 std.debug.print("\t{any}\n", .{token});
             }
         }
 
         return Self{
+            .source = source,
             .allocator = allocator,
-            .scanner = scanner,
             .tokens = tokens,
         };
     }
@@ -43,10 +43,15 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Self) !Ast {
-        return Ast{
+        var tree = Ast{
             .allocator = self.allocator,
             .root = try self.term(),
         };
+        if (builtin.mode == .Debug) {
+            std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
+            std.debug.print("{any}\n", .{tree.root});
+        }
+        return tree;
     }
 
     fn term(self: *Self) !*Expression {
@@ -112,12 +117,12 @@ pub const Parser = struct {
             Token.Type.NUMBER => blk: {
                 const value = std.fmt.parseFloat(
                     f64,
-                    self.scanner.toLiteral(current_token),
+                    Token.toLiteral(self.source, current_token),
                 ) catch unreachable;
                 break :blk Expression.Literal{ .number = value };
             },
             Token.Type.STRING => Expression.Literal{
-                .string = self.scanner.toLiteral(current_token),
+                .string = Token.toLiteral(self.source, current_token),
             },
             Token.Type.NIL => Expression.Literal{ .nil = {} },
             else => unreachable,

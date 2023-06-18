@@ -74,6 +74,13 @@ pub const Token = struct {
         .{ "while", .WHILE },
     });
 
+    pub fn toLiteral(source: [:0]const u8, token: Token) []const u8 {
+        if (token.token_type == .EOF) {
+            return Token.EOF;
+        }
+        return source[token.start..(token.end + 1)];
+    }
+
     fn getKeyword(literal: []const u8) ?Type {
         return keywords.get(literal);
     }
@@ -110,13 +117,6 @@ pub const Scanner = struct {
             .source = source,
             .tokens = std.ArrayList(Token).init(allocator),
         };
-    }
-
-    pub fn toLiteral(self: *const Self, token: Token) []const u8 {
-        if (token.token_type == .EOF) {
-            return Token.EOF;
-        }
-        return self.source[token.start..(token.end + 1)];
     }
 
     pub fn scanTokens(self: *Self) ![]Token {
@@ -279,7 +279,9 @@ pub const Scanner = struct {
             start_line,
             start_column,
         );
-        if (Token.getKeyword(self.toLiteral(token))) |token_type| {
+        if (Token.getKeyword(
+            Token.toLiteral(self.source, token),
+        )) |token_type| {
             token.token_type = token_type;
         }
         try self.tokens.append(token);
@@ -443,7 +445,13 @@ test "check if lexer is correct" {
     };
 
     for (tokens, 0..) |token, index| {
-        try std.testing.expectEqualDeep(expected_tokens[index], token);
-        try std.testing.expectEqualStrings(expected_literals[index], scanner.toLiteral(token));
+        try std.testing.expectEqualDeep(
+            expected_tokens[index],
+            token,
+        );
+        try std.testing.expectEqualStrings(
+            expected_literals[index],
+            Token.toLiteral(source, token),
+        );
     }
 }

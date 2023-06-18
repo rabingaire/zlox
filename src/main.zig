@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const parser = @import("parser.zig");
 const Parser = parser.Parser;
@@ -46,7 +47,4 @@ fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
 
     var tree = try zlox_parser.parse();
     defer tree.deinit();
-
-    std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-    std.debug.print("{any}\n", .{tree.root});
 }
