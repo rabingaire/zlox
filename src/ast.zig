@@ -18,7 +18,7 @@ pub const Ast = struct {
         var prsr = try Parser.init(allocator, source);
         var root = try prsr.parseRoot();
         if (builtin.mode == .Debug) {
-            var debug_value = try root.debugPrint(
+            const debug_value = try root.debugPrint(
                 allocator,
                 source,
             );
@@ -49,12 +49,12 @@ pub const Expression = union(enum) {
     literal: Literal,
 
     pub fn create(allocator: std.mem.Allocator) !*Self {
-        var new = try allocator.create(Self);
+        const new = try allocator.create(Self);
         return new;
     }
 
     pub fn copy(self: Self, allocator: std.mem.Allocator) !*Self {
-        var new = try create(allocator);
+        const new = try create(allocator);
         new.* = self;
         return new;
     }
@@ -126,31 +126,30 @@ pub const Expression = union(enum) {
     fn debugPrint(self: *Self, allocator: std.mem.Allocator, source: [:0]const u8) ![]const u8 {
         return switch (self.*) {
             .binary => blk: {
-                var left = try self.binary.left.debugPrint(
+                const left = try self.binary.left.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(left);
-                var right = try self.binary.right.debugPrint(
+                const right = try self.binary.right.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(right);
-                var operator = Token.toLiteral(source, self.binary.operator);
-                var a = try std.fmt.allocPrint(
+                const operator = Token.toLiteral(source, self.binary.operator);
+                break :blk try std.fmt.allocPrint(
                     allocator,
                     "( {s} {s} {s} )",
                     .{ left, operator, right },
                 );
-                break :blk a;
             },
             .unary => blk: {
-                var right = try self.unary.right.debugPrint(
+                const right = try self.unary.right.debugPrint(
                     allocator,
                     source,
                 );
                 defer allocator.free(right);
-                var operator = Token.toLiteral(source, self.unary.operator);
+                const operator = Token.toLiteral(source, self.unary.operator);
                 break :blk try std.fmt.allocPrint(
                     allocator,
                     "( {s} {s} )",
@@ -158,7 +157,7 @@ pub const Expression = union(enum) {
                 );
             },
             .grouping => blk: {
-                var expr = try self.grouping.expression.debugPrint(
+                const expr = try self.grouping.expression.debugPrint(
                     allocator,
                     source,
                 );
@@ -175,9 +174,21 @@ pub const Expression = union(enum) {
                     "{d}",
                     .{self.literal.number},
                 ),
-                .string => self.literal.string,
-                .boolean => if (self.literal.boolean) "true" else "false",
-                .nil => "nil",
+                .string => try std.fmt.allocPrint(
+                    allocator,
+                    "{s}",
+                    .{self.literal.string},
+                ),
+                .boolean => try std.fmt.allocPrint(
+                    allocator,
+                    "{any}",
+                    .{self.literal.boolean},
+                ),
+                .nil => try std.fmt.allocPrint(
+                    allocator,
+                    "nil",
+                    .{},
+                ),
             },
         };
     }

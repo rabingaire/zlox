@@ -39,7 +39,7 @@ pub const Parser = struct {
     }
 
     pub fn parseRoot(self: *Self) !*Expression {
-        var root = try self.term();
+        const root = try self.term();
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{any}\n", .{root});
@@ -48,7 +48,7 @@ pub const Parser = struct {
     }
 
     fn term(self: *Self) !*Expression {
-        var expr = try self.factor();
+        const expr = try self.factor();
         while (true) {
             const current_token = self.get_current_token();
             switch (current_token.token_type) {
@@ -68,7 +68,7 @@ pub const Parser = struct {
     }
 
     fn factor(self: *Self) !*Expression {
-        var expr = try self.unary();
+        const expr = try self.unary();
         while (true) {
             const current_token = self.get_current_token();
             switch (current_token.token_type) {
@@ -94,7 +94,7 @@ pub const Parser = struct {
             Token.Type.MINUS,
             => {
                 self.advance();
-                var expr = try Expression.create(self.allocator);
+                const expr = try Expression.create(self.allocator);
                 expr.addUnary(current_token, try self.unary());
                 return expr;
             },
@@ -104,7 +104,7 @@ pub const Parser = struct {
 
     fn primary(self: *Self) !*Expression {
         const current_token = self.get_current_token();
-        var literal = switch (current_token.token_type) {
+        const literal = switch (current_token.token_type) {
             Token.Type.TRUE => Expression.Literal{ .boolean = true },
             Token.Type.FALSE => Expression.Literal{ .boolean = false },
             Token.Type.NUMBER => blk: {
@@ -118,10 +118,16 @@ pub const Parser = struct {
                 .string = Token.toLiteral(self.source, current_token),
             },
             Token.Type.NIL => Expression.Literal{ .nil = {} },
-            else => unreachable,
+            else => {
+                std.debug.print(
+                    "Expect expression at line {d} column {d}\n",
+                    .{ current_token.line, current_token.column },
+                );
+                std.os.exit(75);
+            },
         };
         self.advance();
-        var expr = try Expression.create(self.allocator);
+        const expr = try Expression.create(self.allocator);
         expr.addLiteral(literal);
         return expr;
     }
