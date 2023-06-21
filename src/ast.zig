@@ -9,16 +9,24 @@ const Parser = parser.Parser;
 pub const Ast = struct {
     const Self = @This();
 
-    root: *Expression,
+    nodes: []Node,
+    root: NodeIndex,
     allocator: std.mem.Allocator,
     source: [:0]const u8,
     tokens: []Token,
 
     pub fn parse(allocator: std.mem.Allocator, source: [:0]const u8) !Self {
         var prsr = try Parser.init(allocator, source);
-        var root = try prsr.parseRoot();
+        defer prsr.nodes.deinit();
+        errdefer allocator.free(prsr.tokens);
+
+        const root = try prsr.parseRoot();
+        const nodes = try prsr.nodes.toOwnedSlice();
+
         if (builtin.mode == .Debug) {
-            const debug_value = try root.debugPrint(
+            const debug_value = try Expression.debugPrint(
+                root,
+                nodes,
                 allocator,
                 source,
             );
@@ -26,7 +34,9 @@ pub const Ast = struct {
             std.debug.print("\n\n>>>>>>> AST Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{s}\n", .{debug_value});
         }
+
         return Self{
+            .nodes = nodes,
             .root = root,
             .allocator = allocator,
             .source = source,
@@ -36,53 +46,18 @@ pub const Ast = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.tokens);
-        self.root.deinit(self.allocator);
+        self.allocator.free(self.nodes);
     }
 };
 
-pub const Expression = union(enum) {
-    const Self = @This();
+pub const Node = Expression;
+pub const NodeIndex = u32;
 
+pub const Expression = union(enum) {
     binary: Binary,
     unary: Unary,
     grouping: Grouping,
     literal: Literal,
-
-    pub fn create(allocator: std.mem.Allocator) !*Self {
-        const new = try allocator.create(Self);
-        return new;
-    }
-
-    pub fn copy(self: Self, allocator: std.mem.Allocator) !*Self {
-        const new = try create(allocator);
-        new.* = self;
-        return new;
-    }
-
-    pub fn addBinary(self: *Self, left: *Self, operator: Token, right: *Self) void {
-        self.* = Self{
-            .binary = .{
-                .left = left,
-                .operator = operator,
-                .right = right,
-            },
-        };
-    }
-
-    pub fn addUnary(self: *Self, operator: Token, right: *Self) void {
-        self.* = Self{
-            .unary = .{
-                .operator = operator,
-                .right = right,
-            },
-        };
-    }
-
-    pub fn addLiteral(self: *Self, literal: Literal) void {
-        self.* = Self{
-            .literal = literal,
-        };
-    }
 
     pub const Literal = union(enum) {
         number: f64,
@@ -92,46 +67,39 @@ pub const Expression = union(enum) {
     };
 
     pub const Binary = struct {
-        left: *Self,
+        left: NodeIndex,
         operator: Token,
-        right: *Self,
+        right: NodeIndex,
     };
 
     pub const Unary = struct {
         operator: Token,
-        right: *Self,
+        right: NodeIndex,
     };
 
     pub const Grouping = struct {
-        expression: *Self,
+        expression: NodeIndex,
     };
 
-    fn deinit(self: *Self, allocator: std.mem.Allocator) void {
-        defer allocator.destroy(self);
-        switch (self.*) {
-            .binary => |binary| {
-                binary.left.deinit(allocator);
-                binary.right.deinit(allocator);
-            },
-            .unary => |unary| {
-                unary.right.deinit(allocator);
-            },
-            .grouping => |grouping| {
-                grouping.expression.deinit(allocator);
-            },
-            .literal => {},
-        }
-    }
-
-    fn debugPrint(self: *Self, allocator: std.mem.Allocator, source: [:0]const u8) ![]const u8 {
-        return switch (self.*) {
+    fn debugPrint(
+        node_index: NodeIndex,
+        nodes: []Node,
+        allocator: std.mem.Allocator,
+        source: [:0]const u8,
+    ) ![]const u8 {
+        const node = nodes[node_index];
+        return switch (node) {
             .binary => |binary| blk: {
-                const left = try binary.left.debugPrint(
+                const left = try debugPrint(
+                    binary.left,
+                    nodes,
                     allocator,
                     source,
                 );
                 defer allocator.free(left);
-                const right = try binary.right.debugPrint(
+                const right = try debugPrint(
+                    binary.right,
+                    nodes,
                     allocator,
                     source,
                 );
@@ -144,7 +112,9 @@ pub const Expression = union(enum) {
                 );
             },
             .unary => |unary| blk: {
-                const right = try unary.right.debugPrint(
+                const right = try debugPrint(
+                    unary.right,
+                    nodes,
                     allocator,
                     source,
                 );
@@ -157,7 +127,9 @@ pub const Expression = union(enum) {
                 );
             },
             .grouping => |grouping| blk: {
-                const expr = try grouping.expression.debugPrint(
+                const expr = try debugPrint(
+                    grouping.expression,
+                    nodes,
                     allocator,
                     source,
                 );

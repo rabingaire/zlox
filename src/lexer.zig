@@ -119,9 +119,7 @@ pub const Scanner = struct {
         };
     }
 
-    pub fn scanTokens(self: *Self) ![]Token {
-        errdefer self.tokens.deinit();
-
+    pub fn scanTokens(self: *Self) !void {
         while (!self.isAtEnd()) {
             self.start = self.current;
             const ch = self.getCurrentCharAndAdvance();
@@ -199,7 +197,6 @@ pub const Scanner = struct {
                 },
             }
         }
-        return try self.tokens.toOwnedSlice();
     }
 
     fn addToken(self: *Self, token_type: Token.Type, length: u32) !void {
@@ -351,10 +348,10 @@ test "check if lexer is correct" {
     const allocator = std.testing.allocator;
 
     var scanner = Scanner.init(allocator, source);
-    const tokens = try scanner.scanTokens();
-    defer allocator.free(tokens);
+    try scanner.scanTokens();
+    defer scanner.tokens.deinit();
 
-    try std.testing.expect(41 == tokens.len);
+    try std.testing.expect(41 == scanner.tokens.items.len);
 
     const expected_tokens = [_]Token{
         .{ .token_type = Token.Type.CLASS, .start = 0, .end = 4, .line = 1, .column = 1 },
@@ -444,7 +441,7 @@ test "check if lexer is correct" {
         "EOF",
     };
 
-    for (tokens, 0..) |token, index| {
+    for (scanner.tokens.items, 0..) |token, index| {
         try std.testing.expectEqualDeep(
             expected_tokens[index],
             token,

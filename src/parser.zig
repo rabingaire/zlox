@@ -6,6 +6,8 @@ const Token = lexer.Token;
 const Scanner = lexer.Scanner;
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
+const Node = ast.Node;
+const NodeIndex = ast.NodeIndex;
 const Expression = ast.Expression;
 
 pub const Parser = struct {
@@ -13,12 +15,17 @@ pub const Parser = struct {
 
     source: [:0]const u8,
     tokens: []Token,
+    nodes: std.ArrayList(Node),
     allocator: std.mem.Allocator,
     current: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) !Self {
         var scanner = Scanner.init(allocator, source);
-        const tokens = try scanner.scanTokens();
+        defer scanner.tokens.deinit();
+
+        try scanner.scanTokens();
+
+        const tokens = try scanner.tokens.toOwnedSlice();
 
         if (builtin.mode == .Debug) {
             std.debug.print(">>>>>>> Lexer Debug Info <<<<<<<\n\n", .{});
@@ -35,31 +42,36 @@ pub const Parser = struct {
             .source = source,
             .allocator = allocator,
             .tokens = tokens,
+            .nodes = std.ArrayList(Node).init(allocator),
         };
     }
 
-    pub fn parseRoot(self: *Self) !*Expression {
+    pub fn parseRoot(self: *Self) !NodeIndex {
         const root = try self.term();
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-            std.debug.print("{any}\n", .{root});
+            std.debug.print("{any}\n", .{self.nodes.items});
         }
         return root;
     }
 
-    fn term(self: *Self) !*Expression {
-        const expr = try self.factor();
+    fn term(self: *Self) !NodeIndex {
+        var expr = try self.factor();
         while (true) {
-            const current_token = self.get_current_token();
+            const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
                 Token.Type.PLUS,
                 Token.Type.MINUS,
                 => {
                     self.advance();
-                    expr.addBinary(
-                        try expr.copy(self.allocator),
-                        current_token,
-                        try self.factor(),
+                    expr = try self.addNode(
+                        Expression{
+                            .binary = .{
+                                .left = expr,
+                                .operator = current_token,
+                                .right = try self.factor(),
+                            },
+                        },
                     );
                 },
                 else => return expr,
@@ -67,19 +79,23 @@ pub const Parser = struct {
         }
     }
 
-    fn factor(self: *Self) !*Expression {
-        const expr = try self.unary();
+    fn factor(self: *Self) !NodeIndex {
+        var expr = try self.unary();
         while (true) {
-            const current_token = self.get_current_token();
+            const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
                 Token.Type.SLASH,
                 Token.Type.STAR,
                 => {
                     self.advance();
-                    expr.addBinary(
-                        try expr.copy(self.allocator),
-                        current_token,
-                        try self.unary(),
+                    expr = try self.addNode(
+                        Expression{
+                            .binary = .{
+                                .left = expr,
+                                .operator = current_token,
+                                .right = try self.unary(),
+                            },
+                        },
                     );
                 },
                 else => return expr,
@@ -87,23 +103,28 @@ pub const Parser = struct {
         }
     }
 
-    fn unary(self: *Self) !*Expression {
-        const current_token = self.get_current_token();
+    fn unary(self: *Self) !NodeIndex {
+        const current_token = self.getCurrentToken();
         switch (current_token.token_type) {
             Token.Type.BANG,
             Token.Type.MINUS,
             => {
                 self.advance();
-                const expr = try Expression.create(self.allocator);
-                expr.addUnary(current_token, try self.unary());
-                return expr;
+                return try self.addNode(
+                    Expression{
+                        .unary = .{
+                            .operator = current_token,
+                            .right = try self.unary(),
+                        },
+                    },
+                );
             },
             else => return try self.primary(),
         }
     }
 
-    fn primary(self: *Self) !*Expression {
-        const current_token = self.get_current_token();
+    fn primary(self: *Self) !NodeIndex {
+        const current_token = self.getCurrentToken();
         const literal = switch (current_token.token_type) {
             Token.Type.TRUE => Expression.Literal{ .boolean = true },
             Token.Type.FALSE => Expression.Literal{ .boolean = false },
@@ -127,19 +148,27 @@ pub const Parser = struct {
             },
         };
         self.advance();
-        const expr = try Expression.create(self.allocator);
-        expr.addLiteral(literal);
-        return expr;
+        return try self.addNode(
+            Expression{
+                .literal = literal,
+            },
+        );
+    }
+
+    fn addNode(self: *Self, node: Node) !NodeIndex {
+        const index = @intCast(NodeIndex, self.nodes.items.len);
+        try self.nodes.append(node);
+        return index;
     }
 
     fn advance(self: *Self) void {
-        const current_token = self.get_current_token();
+        const current_token = self.getCurrentToken();
         if (current_token.token_type != Token.Type.EOF) {
             self.current += 1;
         }
     }
 
-    fn get_current_token(self: Self) Token {
+    fn getCurrentToken(self: Self) Token {
         return self.tokens[self.current];
     }
 };

@@ -45,6 +45,9 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var tree = try Ast.parse(allocator, file_contents);
     defer tree.deinit();
-    const literal = try Interpreter.evaluate(allocator, tree.root);
-    Interpreter.print(allocator, literal);
+    try Interpreter.evaluate(tree);
+}
+
+test {
+    _ = @import("./lexer.zig");
 }
