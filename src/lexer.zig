@@ -51,6 +51,7 @@ pub const Token = struct {
         WHILE,
 
         EOF,
+        ILLEGAL,
 
         pub fn toLiteral(token_type: Token.Type) ?[]const u8 {
             return switch (token_type) {
@@ -158,7 +159,7 @@ pub const Scanner = struct {
         };
     }
 
-    pub fn scanTokens(self: *Self) !void {
+    pub fn scanTokens(self: *Self) std.mem.Allocator.Error!void {
         while (!self.isAtEnd()) {
             self.start = self.current;
             const ch = self.getCurrentCharAndAdvance();
@@ -228,11 +229,7 @@ pub const Scanner = struct {
                         continue;
                     }
 
-                    std.debug.print(
-                        "Unexpected character '{c}' at line {d} column {d}\n",
-                        .{ ch, self.line, self.column },
-                    );
-                    std.os.exit(65);
+                    try self.addToken(.ILLEGAL, 1);
                 },
             }
         }
@@ -380,7 +377,7 @@ test "check if lexer is correct" {
         \\// cool comment
         \\var multi_line_string = "
         \\I love zig
-        \\";
+        \\";^
     ;
     const allocator = std.testing.allocator;
 
@@ -388,7 +385,7 @@ test "check if lexer is correct" {
     try scanner.scanTokens();
     defer scanner.tokens.deinit();
 
-    try std.testing.expect(46 == scanner.tokens.items.len);
+    try std.testing.expect(47 == scanner.tokens.items.len);
 
     const expected_tokens = [_]Token{
         .{ .token_type = Token.Type.CLASS, .start = 0, .end = 4, .line = 1, .column = 1 },
@@ -436,7 +433,8 @@ test "check if lexer is correct" {
         .{ .token_type = Token.Type.EQUAL, .start = 276, .end = 276, .line = 15, .column = 23 },
         .{ .token_type = Token.Type.STRING, .start = 279, .end = 290, .line = 15, .column = 25 },
         .{ .token_type = Token.Type.SEMICOLON, .start = 292, .end = 292, .line = 17, .column = 2 },
-        .{ .token_type = Token.Type.EOF, .start = 293, .end = 293, .line = 17, .column = 3 },
+        .{ .token_type = Token.Type.ILLEGAL, .start = 293, .end = 293, .line = 17, .column = 3 },
+        .{ .token_type = Token.Type.EOF, .start = 294, .end = 294, .line = 17, .column = 4 },
     };
 
     const expected_literals = [_][]const u8{
@@ -488,6 +486,7 @@ test "check if lexer is correct" {
         \\
         ,
         ";",
+        "^",
         "eof",
     };
 

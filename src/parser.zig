@@ -10,6 +10,8 @@ const Node = ast.Node;
 const NodeIndex = ast.NodeIndex;
 const Expression = ast.Expression;
 
+pub const Error = error{} || std.mem.Allocator.Error;
+
 pub const Parser = struct {
     const Self = @This();
 
@@ -19,7 +21,7 @@ pub const Parser = struct {
     allocator: std.mem.Allocator,
     current: u32 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) !Self {
+    pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Error!Self {
         var scanner = Scanner.init(allocator, source);
         defer scanner.tokens.deinit();
 
@@ -46,8 +48,8 @@ pub const Parser = struct {
         };
     }
 
-    pub fn parseRoot(self: *Self) !NodeIndex {
-        const root = try self.term();
+    pub fn parseRoot(self: *Self) Error!NodeIndex {
+        const root = try self.parseExpression();
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{any}\n", .{self.nodes.items});
@@ -55,7 +57,11 @@ pub const Parser = struct {
         return root;
     }
 
-    fn term(self: *Self) anyerror!NodeIndex {
+    fn parseExpression(self: *Self) Error!NodeIndex {
+        return try self.term();
+    }
+
+    fn term(self: *Self) !NodeIndex {
         var expr = try self.factor();
         while (true) {
             const current_token = self.getCurrentToken();
@@ -148,7 +154,7 @@ pub const Parser = struct {
             Token.Type.NIL => Expression.Literal{ .nil = {} },
             Token.Type.LEFT_PAREN => {
                 self.advance();
-                const expr = try self.term();
+                const expr = try self.parseExpression();
                 const current = self.getCurrentToken();
                 if (current.token_type != Token.Type.RIGHT_PAREN) {
                     std.debug.print(
