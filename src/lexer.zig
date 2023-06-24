@@ -51,9 +51,49 @@ pub const Token = struct {
         WHILE,
 
         EOF,
-    };
 
-    const EOF = "EOF";
+        pub fn toLiteral(token_type: Token.Type) ?[]const u8 {
+            return switch (token_type) {
+                .LEFT_PAREN => "(",
+                .RIGHT_PAREN => ")",
+                .LEFT_BRACE => "{",
+                .RIGHT_BRACE => "}",
+                .COMMA => ",",
+                .DOT => ".",
+                .MINUS => "-",
+                .PLUS => "+",
+                .SEMICOLON => ";",
+                .SLASH => "/",
+                .STAR => "*",
+                .BANG => "!",
+                .BANG_EQUAL => "!=",
+                .EQUAL => "=",
+                .EQUAL_EQUAL => "==",
+                .GREATER => ">",
+                .GREATER_EQUAL => ">=",
+                .LESS => "<",
+                .LESS_EQUAL => "<=",
+                .AND => "and",
+                .CLASS => "class",
+                .ELSE => "else",
+                .FALSE => "false",
+                .FUN => "fun",
+                .FOR => "for",
+                .IF => "if",
+                .NIL => "nil",
+                .OR => "or",
+                .PRINT => "print",
+                .RETURN => "return",
+                .SUPER => "super",
+                .THIS => "this",
+                .TRUE => "true",
+                .VAR => "var",
+                .WHILE => "while",
+                .EOF => "eof",
+                else => null,
+            };
+        }
+    };
 
     const keywords = std.ComptimeStringMap(Type, .{
         .{ "and", .AND },
@@ -75,10 +115,9 @@ pub const Token = struct {
     });
 
     pub fn toLiteral(source: [:0]const u8, token: Token) []const u8 {
-        if (token.token_type == .EOF) {
-            return Token.EOF;
-        }
-        return source[token.start..(token.end + 1)];
+        return Token.Type.toLiteral(token.token_type) orelse {
+            return source[token.start..(token.end + 1)];
+        };
     }
 
     fn getKeyword(literal: []const u8) ?Type {

@@ -55,7 +55,7 @@ pub const Parser = struct {
         return root;
     }
 
-    fn term(self: *Self) !NodeIndex {
+    fn term(self: *Self) anyerror!NodeIndex {
         var expr = try self.factor();
         while (true) {
             const current_token = self.getCurrentToken();
@@ -139,6 +139,25 @@ pub const Parser = struct {
                 .string = Token.toLiteral(self.source, current_token),
             },
             Token.Type.NIL => Expression.Literal{ .nil = {} },
+            Token.Type.LEFT_PAREN => {
+                self.advance();
+                const expr = try self.term();
+                const current = self.getCurrentToken();
+                if (current.token_type != Token.Type.RIGHT_PAREN) {
+                    std.debug.print(
+                        "Expect '{s}' at line {d} column {d} except got '{s}'\n",
+                        .{
+                            Token.Type.toLiteral(Token.Type.RIGHT_PAREN).?,
+                            current_token.line,
+                            current_token.column,
+                            Token.toLiteral(self.source, current),
+                        },
+                    );
+                    std.os.exit(75);
+                }
+                self.advance();
+                return expr;
+            },
             else => {
                 std.debug.print(
                     "Expect expression at line {d} column {d}\n",
