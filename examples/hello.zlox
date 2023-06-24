@@ -12,3 +12,6 @@ var breakfast = Breakfast();
 print breakfast; // "Breakfast instance".
 var randomnumber = 1.234;
 // cool comment
+var multi_line_string = "
+I love zig
+";

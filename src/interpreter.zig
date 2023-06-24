@@ -75,6 +75,10 @@ pub const Interpreter = struct {
                         break :blk Literal{ .number = left.number + right.number };
                     }
                     if (std.mem.eql(u8, value_type, @tagName(Literal.string))) {
+                        defer {
+                            allocator.free(left.string);
+                            allocator.free(right.string);
+                        }
                         const value = try std.fmt.allocPrint(
                             allocator,
                             "{s}{s}",

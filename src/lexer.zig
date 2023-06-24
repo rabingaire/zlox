@@ -254,18 +254,9 @@ pub const Scanner = struct {
         const start_column = self.column;
 
         while (self.peek() != '"' and !self.isAtEnd()) {
-            if (self.peek() == '\n') {
-                self.line += 1;
+            if (self.getCurrentCharAndAdvance() == '\n') {
+                self.newline();
             }
-            self.advance();
-        }
-
-        if (self.isAtEnd()) {
-            std.debug.print(
-                "Unterminated string literal starting at line {d} column {d}\n",
-                .{ start_line, start_column },
-            );
-            std.os.exit(65);
         }
 
         const token = Token.init(
@@ -277,7 +268,11 @@ pub const Scanner = struct {
         );
         try self.tokens.append(token);
 
-        self.advance(); // eat end double qote (")
+        if (self.isAtEnd()) {
+            try self.addToken(.EOF, 1);
+        } else {
+            self.advance(); // eat end double qote (")
+        }
     }
 
     fn parseNumber(self: *Self) !void {
@@ -383,6 +378,9 @@ test "check if lexer is correct" {
         \\print breakfast; // "Breakfast instance".
         \\var randomnumber = 1.234;
         \\// cool comment
+        \\var multi_line_string = "
+        \\I love zig
+        \\";
     ;
     const allocator = std.testing.allocator;
 
@@ -390,7 +388,7 @@ test "check if lexer is correct" {
     try scanner.scanTokens();
     defer scanner.tokens.deinit();
 
-    try std.testing.expect(41 == scanner.tokens.items.len);
+    try std.testing.expect(46 == scanner.tokens.items.len);
 
     const expected_tokens = [_]Token{
         .{ .token_type = Token.Type.CLASS, .start = 0, .end = 4, .line = 1, .column = 1 },
@@ -433,7 +431,12 @@ test "check if lexer is correct" {
         .{ .token_type = Token.Type.EQUAL, .start = 229, .end = 229, .line = 13, .column = 18 },
         .{ .token_type = Token.Type.NUMBER, .start = 231, .end = 235, .line = 13, .column = 20 },
         .{ .token_type = Token.Type.SEMICOLON, .start = 236, .end = 236, .line = 13, .column = 25 },
-        .{ .token_type = Token.Type.EOF, .start = 238, .end = 238, .line = 14, .column = 16 },
+        .{ .token_type = Token.Type.VAR, .start = 254, .end = 256, .line = 15, .column = 1 },
+        .{ .token_type = Token.Type.IDENTIFIER, .start = 258, .end = 274, .line = 15, .column = 5 },
+        .{ .token_type = Token.Type.EQUAL, .start = 276, .end = 276, .line = 15, .column = 23 },
+        .{ .token_type = Token.Type.STRING, .start = 279, .end = 290, .line = 15, .column = 25 },
+        .{ .token_type = Token.Type.SEMICOLON, .start = 292, .end = 292, .line = 17, .column = 2 },
+        .{ .token_type = Token.Type.EOF, .start = 293, .end = 293, .line = 17, .column = 3 },
     };
 
     const expected_literals = [_][]const u8{
@@ -477,7 +480,15 @@ test "check if lexer is correct" {
         "=",
         "1.234",
         ";",
-        "EOF",
+        "var",
+        "multi_line_string",
+        "=",
+        \\
+        \\I love zig
+        \\
+        ,
+        ";",
+        "eof",
     };
 
     for (scanner.tokens.items, 0..) |token, index| {

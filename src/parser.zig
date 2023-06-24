@@ -135,8 +135,15 @@ pub const Parser = struct {
                 ) catch unreachable;
                 break :blk Expression.Literal{ .number = value };
             },
-            Token.Type.STRING => Expression.Literal{
-                .string = Token.toLiteral(self.source, current_token),
+            Token.Type.STRING => blk: {
+                const value = try std.fmt.allocPrint(
+                    self.allocator,
+                    "{s}",
+                    .{Token.toLiteral(self.source, current_token)},
+                );
+                break :blk Expression.Literal{
+                    .string = value,
+                };
             },
             Token.Type.NIL => Expression.Literal{ .nil = {} },
             Token.Type.LEFT_PAREN => {
