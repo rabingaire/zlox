@@ -1,4 +1,5 @@
 const std = @import("std");
+const AllocatorError = std.mem.Allocator.Error;
 
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
@@ -8,44 +9,69 @@ const NodeIndex = ast.NodeIndex;
 const Literal = Expression.Literal;
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
-const Type = Token.Type;
+
+pub const Error = error{EvalError} || AllocatorError;
 
 pub const Interpreter = struct {
-    pub fn evaluate(tree: Ast) !void {
-        const literal = try evaluateExpression(
-            tree.allocator,
-            tree.root,
-            tree.nodes,
-        );
-        print(tree.allocator, literal);
+    const Self = @This();
+
+    allocator: std.mem.Allocator,
+    source: [:0]const u8,
+    tree: Ast,
+    result_literal: Literal,
+    errors: std.ArrayList(RuntimeError),
+
+    pub fn deinit(self: *Self) void {
+        self.errors.deinit();
     }
 
-    fn print(allocator: std.mem.Allocator, lit: Literal) void {
-        switch (lit) {
-            .number => |value| std.debug.print("{d}\n", .{value}),
+    pub fn hasErrors(self: *Self) bool {
+        return self.errors.items.len != 0;
+    }
+
+    pub fn evaluate(tree: Ast) AllocatorError!Self {
+        var inter = Self{
+            .allocator = tree.allocator,
+            .source = tree.source,
+            .tree = tree,
+            .result_literal = undefined,
+            .errors = std.ArrayList(RuntimeError).init(tree.allocator),
+        };
+        inter.result_literal = inter.evaluateExpression(
+            inter.tree.root,
+            inter.tree.nodes,
+        ) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.EvalError => undefined,
+        };
+        return inter;
+    }
+
+    pub fn print(self: *Self) !void {
+        const stdout = std.io.getStdOut().writer();
+        switch (self.result_literal) {
+            .number => |value| try stdout.print("{d}\n", .{value}),
             .string => |value| {
-                defer allocator.free(value);
-                std.debug.print("{s}\n", .{value});
+                defer self.allocator.free(value);
+                try stdout.print("{s}\n", .{value});
             },
-            .boolean => |value| std.debug.print("{any}\n", .{value}),
-            .nil => std.debug.print("nil\n", .{}),
+            .boolean => |value| try stdout.print("{any}\n", .{value}),
+            .nil => try stdout.print("nil\n", .{}),
         }
     }
 
     fn evaluateExpression(
-        allocator: std.mem.Allocator,
+        self: *Self,
         node_index: NodeIndex,
         nodes: []Node,
-    ) anyerror!Literal {
+    ) Error!Literal {
         const node = nodes[node_index];
         const literal = switch (node) {
-            .binary => |b_node| try evaluateBinary(
-                allocator,
+            .binary => |b_node| try self.evaluateBinary(
                 b_node,
                 nodes,
             ),
-            .unary => |u_node| try evaluateUnary(
-                allocator,
+            .unary => |u_node| try self.evaluateUnary(
                 u_node,
                 nodes,
             ),
@@ -55,14 +81,16 @@ pub const Interpreter = struct {
         return literal;
     }
 
-    fn evaluateBinary(allocator: std.mem.Allocator, expr: Expression.Binary, nodes: []Node) !Literal {
-        const left = try evaluateExpression(
-            allocator,
+    fn evaluateBinary(
+        self: *Self,
+        expr: Expression.Binary,
+        nodes: []Node,
+    ) !Literal {
+        const left = try self.evaluateExpression(
             expr.left,
             nodes,
         );
-        const right = try evaluateExpression(
-            allocator,
+        const right = try self.evaluateExpression(
             expr.right,
             nodes,
         );
@@ -76,33 +104,39 @@ pub const Interpreter = struct {
                     }
                     if (std.mem.eql(u8, value_type, @tagName(Literal.string))) {
                         defer {
-                            allocator.free(left.string);
-                            allocator.free(right.string);
+                            self.allocator.free(left.string);
+                            self.allocator.free(right.string);
                         }
                         const value = try std.fmt.allocPrint(
-                            allocator,
+                            self.allocator,
                             "{s}{s}",
                             .{ left.string, right.string },
                         );
                         break :blk Literal{ .string = value };
                     }
                 }
-                std.debug.print(
-                    "Bad binary operator '+' at line {d} column {d} for operand of type '{s}' & '{s}'\n",
-                    .{ operator.line, operator.column, @tagName(left), @tagName(right) },
+                return self.addError(
+                    .invalid_binary_operation,
+                    operator,
+                    RuntimeError.DataTypeInfo{
+                        .left = @tagName(left),
+                        .right = @tagName(right),
+                    },
                 );
-                std.os.exit(85);
             },
             .MINUS => blk: {
                 const value_type = @tagName(left);
                 const isNumber = (std.mem.eql(u8, value_type, @tagName(right)) and
                     std.mem.eql(u8, value_type, @tagName(Literal.number)));
                 if (!isNumber) {
-                    std.debug.print(
-                        "Bad binary operator '-' at line {d} column {d} for operand of type '{s}' & '{s}'\n",
-                        .{ operator.line, operator.column, @tagName(left), @tagName(right) },
+                    return self.addError(
+                        .invalid_binary_operation,
+                        operator,
+                        RuntimeError.DataTypeInfo{
+                            .left = @tagName(left),
+                            .right = @tagName(right),
+                        },
                     );
-                    std.os.exit(85);
                 }
                 break :blk Literal{ .number = left.number - right.number };
             },
@@ -111,12 +145,11 @@ pub const Interpreter = struct {
     }
 
     fn evaluateUnary(
-        allocator: std.mem.Allocator,
+        self: *Self,
         expr: Expression.Unary,
         nodes: []Node,
     ) !Literal {
-        const right = try evaluateExpression(
-            allocator,
+        const right = try self.evaluateExpression(
             expr.right,
             nodes,
         );
@@ -125,16 +158,34 @@ pub const Interpreter = struct {
             .BANG => Literal{ .boolean = !isTruthy(right) },
             .MINUS => blk: {
                 if (!std.mem.eql(u8, @tagName(right), @tagName(Literal.number))) {
-                    std.debug.print(
-                        "Bad unary operator '-' at line {d} column {d} for operand of type '{s}'\n",
-                        .{ operator.line, operator.column, @tagName(right) },
+                    return self.addError(
+                        .invalid_unary_operation,
+                        operator,
+                        RuntimeError.DataTypeInfo{
+                            .right = @tagName(right),
+                        },
                     );
-                    std.os.exit(85);
                 }
                 break :blk Literal{ .number = -right.number };
             },
             else => unreachable,
         };
+    }
+
+    fn addError(
+        self: *Self,
+        error_type: RuntimeError.Type,
+        token: Token,
+        data_type: RuntimeError.DataTypeInfo,
+    ) Error {
+        try self.errors.append(
+            RuntimeError{
+                .error_type = error_type,
+                .token = token,
+                .data_type = data_type,
+            },
+        );
+        return Error.EvalError;
     }
 
     fn isTruthy(lit: Literal) bool {
@@ -144,5 +195,53 @@ pub const Interpreter = struct {
             .boolean => |value| value,
             .nil => false,
         };
+    }
+};
+
+pub const RuntimeError = struct {
+    pub const DataTypeInfo = struct {
+        left: ?[]const u8 = null,
+        right: []const u8,
+    };
+
+    error_type: Type,
+    token: Token,
+    data_type: DataTypeInfo,
+
+    pub const Type = enum {
+        invalid_binary_operation,
+        invalid_unary_operation,
+    };
+
+    pub fn print(inter: Interpreter) !void {
+        const stderr = std.io.getStdErr().writer();
+
+        for (inter.errors.items) |eval_error| {
+            try stderr.print("\nRuntime::Error: at line {d} column {d}\n\t", .{
+                eval_error.token.line,
+                eval_error.token.column,
+            });
+            switch (eval_error.error_type) {
+                .invalid_binary_operation => {
+                    try stderr.print(
+                        "Bad binary operator '{s}' for operand of type '{s}' and '{s}'\n",
+                        .{
+                            Token.toLiteral(inter.source, eval_error.token),
+                            eval_error.data_type.left.?,
+                            eval_error.data_type.right,
+                        },
+                    );
+                },
+                .invalid_unary_operation => {
+                    try stderr.print(
+                        "Bad unary operator '{s} for operand of type '{s}'\n",
+                        .{
+                            Token.toLiteral(inter.source, eval_error.token),
+                            eval_error.data_type.right,
+                        },
+                    );
+                },
+            }
+        }
     }
 };

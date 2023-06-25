@@ -25,6 +25,7 @@ pub const Ast = struct {
         errdefer allocator.free(prsr.tokens);
 
         try prsr.parseRoot();
+
         const root = prsr.root;
         const nodes = try prsr.nodes.toOwnedSlice();
         const errors = try prsr.errors.toOwnedSlice();
@@ -49,6 +50,10 @@ pub const Ast = struct {
             .source = source,
             .tokens = prsr.tokens,
         };
+    }
+
+    pub fn hasErrors(self: *Self) bool {
+        return self.errors.len != 0;
     }
 
     pub fn deinit(self: *Self) void {
@@ -188,7 +193,7 @@ pub const Error = struct {
         const stderr = std.io.getStdErr().writer();
 
         for (tree.errors) |parse_error| {
-            try stderr.print("\nError: at line {d} column {d}\n\t", .{
+            try stderr.print("\nParse::Error: at line {d} column {d}\n\t", .{
                 parse_error.current_token.line,
                 parse_error.current_token.column,
             });

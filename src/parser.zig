@@ -22,7 +22,6 @@ pub const Parser = struct {
     errors: std.ArrayList(AstError),
     nodes: std.ArrayList(Node),
     root: NodeIndex,
-    allocator: std.mem.Allocator,
     current: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Error!Self {
@@ -46,7 +45,6 @@ pub const Parser = struct {
 
         return Self{
             .source = source,
-            .allocator = allocator,
             .tokens = tokens,
             .root = undefined,
             .errors = std.ArrayList(AstError).init(allocator),
@@ -149,15 +147,8 @@ pub const Parser = struct {
                 ) catch unreachable;
                 break :blk Expression.Literal{ .number = value };
             },
-            Token.Type.STRING => blk: {
-                const value = try std.fmt.allocPrint(
-                    self.allocator,
-                    "{s}",
-                    .{Token.toLiteral(self.source, current_token)},
-                );
-                break :blk Expression.Literal{
-                    .string = value,
-                };
+            Token.Type.STRING => Expression.Literal{
+                .string = Token.toLiteral(self.source, current_token),
             },
             Token.Type.NIL => Expression.Literal{ .nil = {} },
             Token.Type.LEFT_PAREN => {
