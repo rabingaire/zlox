@@ -9,6 +9,7 @@ const Parser = parser.Parser;
 pub const Ast = struct {
     const Self = @This();
 
+    errors: []Error,
     nodes: []Node,
     root: NodeIndex,
     allocator: std.mem.Allocator,
@@ -17,13 +18,18 @@ pub const Ast = struct {
 
     pub fn parse(allocator: std.mem.Allocator, source: [:0]const u8) !Self {
         var prsr = try Parser.init(allocator, source);
-        defer prsr.nodes.deinit();
+        defer {
+            prsr.nodes.deinit();
+            prsr.errors.deinit();
+        }
         errdefer allocator.free(prsr.tokens);
 
-        const root = try prsr.parseRoot();
+        try prsr.parseRoot();
+        const root = prsr.root;
         const nodes = try prsr.nodes.toOwnedSlice();
+        const errors = try prsr.errors.toOwnedSlice();
 
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .Debug and errors.len == 0) {
             const debug_value = try Expression.debugPrint(
                 root,
                 nodes,
@@ -36,6 +42,7 @@ pub const Ast = struct {
         }
 
         return Self{
+            .errors = errors,
             .nodes = nodes,
             .root = root,
             .allocator = allocator,
@@ -47,6 +54,7 @@ pub const Ast = struct {
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.tokens);
         self.allocator.free(self.nodes);
+        self.allocator.free(self.errors);
     }
 };
 
@@ -163,5 +171,46 @@ pub const Expression = union(enum) {
                 ),
             },
         };
+    }
+};
+
+pub const Error = struct {
+    error_type: Type,
+    current_token: Token,
+    expected_token_type: ?Token.Type,
+
+    pub const Type = enum {
+        expected_expression,
+        expected_token,
+    };
+
+    pub fn print(tree: Ast) !void {
+        const stderr = std.io.getStdErr().writer();
+
+        for (tree.errors) |parse_error| {
+            try stderr.print("\nError: at line {d} column {d}\n\t", .{
+                parse_error.current_token.line,
+                parse_error.current_token.column,
+            });
+            switch (parse_error.error_type) {
+                .expected_expression => {
+                    try stderr.print("Expected expression\n", .{});
+                },
+                .expected_token => {
+                    try stderr.print(
+                        "Expected '{s}' got '{s}'\n",
+                        .{
+                            Token.Type.toLiteral(
+                                parse_error.expected_token_type.?,
+                            ).?,
+                            Token.toLiteral(
+                                tree.source,
+                                parse_error.current_token,
+                            ),
+                        },
+                    );
+                },
+            }
+        }
     }
 };

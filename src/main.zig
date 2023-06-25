@@ -45,6 +45,12 @@ fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
 fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
     var tree = try Ast.parse(allocator, file_contents);
     defer tree.deinit();
+
+    if (tree.errors.len != 0) {
+        try ast.Error.print(tree);
+        return;
+    }
+
     try Interpreter.evaluate(tree);
 }
 

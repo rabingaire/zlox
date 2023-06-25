@@ -1,4 +1,5 @@
 const std = @import("std");
+const AllocatorError = std.mem.Allocator.Error;
 const builtin = @import("builtin");
 
 const lexer = @import("lexer.zig");
@@ -7,17 +8,20 @@ const Scanner = lexer.Scanner;
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
 const Node = ast.Node;
+const AstError = ast.Error;
 const NodeIndex = ast.NodeIndex;
 const Expression = ast.Expression;
 
-pub const Error = error{} || std.mem.Allocator.Error;
+pub const Error = error{ParseError} || AllocatorError;
 
 pub const Parser = struct {
     const Self = @This();
 
     source: [:0]const u8,
     tokens: []Token,
+    errors: std.ArrayList(AstError),
     nodes: std.ArrayList(Node),
+    root: NodeIndex,
     allocator: std.mem.Allocator,
     current: u32 = 0,
 
@@ -44,17 +48,21 @@ pub const Parser = struct {
             .source = source,
             .allocator = allocator,
             .tokens = tokens,
+            .root = undefined,
+            .errors = std.ArrayList(AstError).init(allocator),
             .nodes = std.ArrayList(Node).init(allocator),
         };
     }
 
-    pub fn parseRoot(self: *Self) Error!NodeIndex {
-        const root = try self.parseExpression();
+    pub fn parseRoot(self: *Self) AllocatorError!void {
+        self.root = self.parseExpression() catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ParseError => return,
+        };
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{any}\n", .{self.nodes.items});
         }
-        return root;
     }
 
     fn parseExpression(self: *Self) Error!NodeIndex {
@@ -157,26 +165,19 @@ pub const Parser = struct {
                 const expr = try self.parseExpression();
                 const current = self.getCurrentToken();
                 if (current.token_type != Token.Type.RIGHT_PAREN) {
-                    std.debug.print(
-                        "Expect '{s}' at line {d} column {d} except got '{s}'\n",
-                        .{
-                            Token.Type.toLiteral(Token.Type.RIGHT_PAREN).?,
-                            current_token.line,
-                            current_token.column,
-                            Token.toLiteral(self.source, current),
-                        },
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.RIGHT_PAREN,
                     );
-                    std.os.exit(75);
                 }
                 self.advance();
                 return expr;
             },
             else => {
-                std.debug.print(
-                    "Expect expression at line {d} column {d}\n",
-                    .{ current_token.line, current_token.column },
+                return self.addError(
+                    AstError.Type.expected_expression,
+                    null,
                 );
-                std.os.exit(75);
             },
         };
         self.advance();
@@ -185,6 +186,19 @@ pub const Parser = struct {
                 .literal = literal,
             },
         );
+    }
+
+    fn addError(
+        self: *Self,
+        error_type: AstError.Type,
+        expected_token_type: ?Token.Type,
+    ) Error {
+        try self.errors.append(AstError{
+            .error_type = error_type,
+            .current_token = self.getCurrentToken(),
+            .expected_token_type = expected_token_type,
+        });
+        return Error.ParseError;
     }
 
     fn addNode(self: *Self, node: Node) !NodeIndex {
