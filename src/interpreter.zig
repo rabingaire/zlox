@@ -75,8 +75,11 @@ pub const Interpreter = struct {
                 u_node,
                 nodes,
             ),
+            .grouping => |g_node| try self.evaluateExpression(
+                g_node.expression,
+                nodes,
+            ),
             .literal => |l_node| l_node,
-            else => unreachable,
         };
         return literal;
     }
@@ -90,58 +93,178 @@ pub const Interpreter = struct {
             expr.left,
             nodes,
         );
+        const left_type = @tagName(left);
         const right = try self.evaluateExpression(
             expr.right,
             nodes,
         );
+        const right_type = @tagName(right);
+
         const operator = expr.operator;
-        return switch (operator.token_type) {
-            .PLUS => blk: {
-                if (std.mem.eql(u8, @tagName(left), @tagName(right))) {
-                    const value_type = @tagName(left);
-                    if (std.mem.eql(u8, value_type, @tagName(Literal.number))) {
-                        break :blk Literal{ .number = left.number + right.number };
-                    }
-                    if (std.mem.eql(u8, value_type, @tagName(Literal.string))) {
-                        defer {
-                            self.allocator.free(left.string);
-                            self.allocator.free(right.string);
-                        }
-                        const value = try std.fmt.allocPrint(
-                            self.allocator,
-                            "{s}{s}",
-                            .{ left.string, right.string },
-                        );
-                        break :blk Literal{ .string = value };
-                    }
+
+        const is_number_type = isType(
+            left_type,
+            right_type,
+            @tagName(Literal.number),
+        );
+        const is_string_type = isType(
+            left_type,
+            right_type,
+            @tagName(Literal.string),
+        );
+        switch (operator.token_type) {
+            .PLUS => {
+                if (is_number_type) {
+                    return Literal{ .number = left.number + right.number };
                 }
-                return self.addError(
-                    .invalid_binary_operation,
-                    operator,
-                    RuntimeError.DataTypeInfo{
-                        .left = @tagName(left),
-                        .right = @tagName(right),
-                    },
-                );
-            },
-            .MINUS => blk: {
-                const value_type = @tagName(left);
-                const isNumber = (std.mem.eql(u8, value_type, @tagName(right)) and
-                    std.mem.eql(u8, value_type, @tagName(Literal.number)));
-                if (!isNumber) {
-                    return self.addError(
-                        .invalid_binary_operation,
-                        operator,
-                        RuntimeError.DataTypeInfo{
-                            .left = @tagName(left),
-                            .right = @tagName(right),
-                        },
+                if (is_string_type) {
+                    defer {
+                        self.allocator.free(left.string);
+                        self.allocator.free(right.string);
+                    }
+                    const value = try std.fmt.allocPrint(
+                        self.allocator,
+                        "{s}{s}",
+                        .{ left.string, right.string },
                     );
+                    return Literal{ .string = value };
                 }
-                break :blk Literal{ .number = left.number - right.number };
+            },
+            .MINUS => {
+                if (is_number_type) {
+                    return Literal{ .number = left.number - right.number };
+                }
+            },
+            .STAR => {
+                if (is_number_type) {
+                    return Literal{ .number = left.number * right.number };
+                }
+            },
+            .SLASH => {
+                if (is_number_type) {
+                    return Literal{ .number = left.number / right.number };
+                }
+            },
+            .GREATER => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number > right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{ .boolean = compareString(isGreater, left.string, right.string) };
+                }
+            },
+            .GREATER_EQUAL => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number >= right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{ .boolean = compareString(isGreaterEqual, left.string, right.string) };
+                }
+            },
+            .LESS => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number < right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{ .boolean = compareString(isLess, left.string, right.string) };
+                }
+            },
+            .LESS_EQUAL => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number <= right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{ .boolean = compareString(isLessEqual, left.string, right.string) };
+                }
+            },
+            .BANG_EQUAL => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number != right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{
+                        .boolean = !std.mem.eql(
+                            u8,
+                            left.string,
+                            right.string,
+                        ),
+                    };
+                }
+
+                return Literal{ .boolean = isTruthy(left) != isTruthy(right) };
+            },
+            .EQUAL_EQUAL => {
+                if (is_number_type) {
+                    return Literal{ .boolean = left.number == right.number };
+                }
+
+                if (is_string_type) {
+                    return Literal{
+                        .boolean = std.mem.eql(
+                            u8,
+                            left.string,
+                            right.string,
+                        ),
+                    };
+                }
+
+                return Literal{ .boolean = isTruthy(left) == isTruthy(right) };
             },
             else => unreachable,
-        };
+        }
+        return self.addError(
+            .invalid_binary_operation,
+            operator,
+            RuntimeError.DataTypeInfo{
+                .left = left_type,
+                .right = right_type,
+            },
+        );
+    }
+
+    fn isGreater(left: usize, right: usize) bool {
+        return left > right;
+    }
+    fn isGreaterEqual(left: usize, right: usize) bool {
+        return left >= right;
+    }
+    fn isLess(left: usize, right: usize) bool {
+        return left < right;
+    }
+    fn isLessEqual(left: usize, right: usize) bool {
+        return left <= right;
+    }
+    fn compareString(comptime func: fn (usize, usize) bool, left: []const u8, right: []const u8) bool {
+        var idx: usize = 0;
+        while (idx < @min(left.len, right.len)) : (idx += 1) {
+            if (left[idx] == right[idx]) {
+                continue;
+            }
+            return func(left[idx], right[idx]);
+        }
+        return func(left.len, right.len);
+    }
+
+    fn isType(
+        left_type: []const u8,
+        right_type: []const u8,
+        expected_type: []const u8,
+    ) bool {
+        const is_equal_type = std.mem.eql(
+            u8,
+            left_type,
+            right_type,
+        );
+        return is_equal_type and std.mem.eql(
+            u8,
+            left_type,
+            expected_type,
+        );
     }
 
     fn evaluateUnary(

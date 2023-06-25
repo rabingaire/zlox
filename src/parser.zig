@@ -64,7 +64,57 @@ pub const Parser = struct {
     }
 
     fn parseExpression(self: *Self) Error!NodeIndex {
-        return try self.term();
+        return try self.equality();
+    }
+
+    fn equality(self: *Self) !NodeIndex {
+        var expr = try self.comparison();
+        while (true) {
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.BANG_EQUAL,
+                Token.Type.EQUAL_EQUAL,
+                => {
+                    self.advance();
+                    expr = try self.addNode(
+                        Expression{
+                            .binary = .{
+                                .left = expr,
+                                .operator = current_token,
+                                .right = try self.comparison(),
+                            },
+                        },
+                    );
+                },
+                else => return expr,
+            }
+        }
+    }
+
+    fn comparison(self: *Self) !NodeIndex {
+        var expr = try self.term();
+        while (true) {
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.GREATER,
+                Token.Type.GREATER_EQUAL,
+                Token.Type.LESS,
+                Token.Type.LESS_EQUAL,
+                => {
+                    self.advance();
+                    expr = try self.addNode(
+                        Expression{
+                            .binary = .{
+                                .left = expr,
+                                .operator = current_token,
+                                .right = try self.factor(),
+                            },
+                        },
+                    );
+                },
+                else => return expr,
+            }
+        }
     }
 
     fn term(self: *Self) !NodeIndex {
