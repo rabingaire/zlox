@@ -10,7 +10,6 @@ const Ast = ast.Ast;
 const Node = ast.Node;
 const AstError = ast.Error;
 const NodeIndex = ast.NodeIndex;
-const Expression = ast.Expression;
 
 pub const Error = error{ParseError} || AllocatorError;
 
@@ -22,6 +21,7 @@ pub const Parser = struct {
     errors: std.ArrayList(AstError),
     nodes: std.ArrayList(Node),
     root: NodeIndex,
+    allocator: std.mem.Allocator,
     current: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Error!Self {
@@ -47,6 +47,7 @@ pub const Parser = struct {
             .source = source,
             .tokens = tokens,
             .root = undefined,
+            .allocator = allocator,
             .errors = std.ArrayList(AstError).init(allocator),
             .nodes = std.ArrayList(Node).init(allocator),
         };
@@ -77,7 +78,7 @@ pub const Parser = struct {
                 => {
                     self.advance();
                     expr = try self.addNode(
-                        Expression{
+                        .{
                             .binary = .{
                                 .left = expr,
                                 .operator = current_token,
@@ -103,7 +104,7 @@ pub const Parser = struct {
                 => {
                     self.advance();
                     expr = try self.addNode(
-                        Expression{
+                        .{
                             .binary = .{
                                 .left = expr,
                                 .operator = current_token,
@@ -127,7 +128,7 @@ pub const Parser = struct {
                 => {
                     self.advance();
                     expr = try self.addNode(
-                        Expression{
+                        .{
                             .binary = .{
                                 .left = expr,
                                 .operator = current_token,
@@ -151,7 +152,7 @@ pub const Parser = struct {
                 => {
                     self.advance();
                     expr = try self.addNode(
-                        Expression{
+                        .{
                             .binary = .{
                                 .left = expr,
                                 .operator = current_token,
@@ -173,7 +174,7 @@ pub const Parser = struct {
             => {
                 self.advance();
                 return try self.addNode(
-                    Expression{
+                    .{
                         .unary = .{
                             .operator = current_token,
                             .right = try self.unary(),
@@ -188,19 +189,26 @@ pub const Parser = struct {
     fn primary(self: *Self) !NodeIndex {
         const current_token = self.getCurrentToken();
         const literal = switch (current_token.token_type) {
-            Token.Type.TRUE => Expression.Literal{ .boolean = true },
-            Token.Type.FALSE => Expression.Literal{ .boolean = false },
+            Token.Type.TRUE => Node.Literal{ .boolean = true },
+            Token.Type.FALSE => Node.Literal{ .boolean = false },
             Token.Type.NUMBER => blk: {
                 const value = std.fmt.parseFloat(
                     f64,
                     Token.toLiteral(self.source, current_token),
                 ) catch unreachable;
-                break :blk Expression.Literal{ .number = value };
+                break :blk Node.Literal{ .number = value };
             },
-            Token.Type.STRING => Expression.Literal{
-                .string = Token.toLiteral(self.source, current_token),
+            Token.Type.STRING => blk: {
+                const value = try std.fmt.allocPrint(
+                    self.allocator,
+                    "{s}",
+                    .{Token.toLiteral(self.source, current_token)},
+                );
+                break :blk Node.Literal{
+                    .string = value,
+                };
             },
-            Token.Type.NIL => Expression.Literal{ .nil = {} },
+            Token.Type.NIL => Node.Literal{ .nil = {} },
             Token.Type.LEFT_PAREN => {
                 self.advance();
                 const expr = try self.parseExpression();
@@ -223,7 +231,7 @@ pub const Parser = struct {
         };
         self.advance();
         return try self.addNode(
-            Expression{
+            .{
                 .literal = literal,
             },
         );

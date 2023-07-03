@@ -3,10 +3,9 @@ const AllocatorError = std.mem.Allocator.Error;
 
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
-const Expression = ast.Expression;
 const Node = ast.Node;
 const NodeIndex = ast.NodeIndex;
-const Literal = Expression.Literal;
+const Literal = Node.Literal;
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
 
@@ -86,7 +85,7 @@ pub const Interpreter = struct {
 
     fn evaluateBinary(
         self: *Self,
-        expr: Expression.Binary,
+        expr: Node.Binary,
         nodes: []Node,
     ) !Literal {
         const left = try self.evaluateExpression(
@@ -100,14 +99,30 @@ pub const Interpreter = struct {
         );
         const right_type = @tagName(right);
 
+        defer {
+            const expected_type = @tagName(Literal.string);
+            if (isType(
+                left_type,
+                expected_type,
+            )) {
+                self.allocator.free(left.string);
+            }
+            if (isType(
+                right_type,
+                expected_type,
+            )) {
+                self.allocator.free(right.string);
+            }
+        }
+
         const operator = expr.operator;
 
-        const is_number_type = isType(
+        const is_number_type = isBothType(
             left_type,
             right_type,
             @tagName(Literal.number),
         );
-        const is_string_type = isType(
+        const is_string_type = isBothType(
             left_type,
             right_type,
             @tagName(Literal.string),
@@ -118,10 +133,6 @@ pub const Interpreter = struct {
                     return Literal{ .number = left.number + right.number };
                 }
                 if (is_string_type) {
-                    defer {
-                        self.allocator.free(left.string);
-                        self.allocator.free(right.string);
-                    }
                     const value = try std.fmt.allocPrint(
                         self.allocator,
                         "{s}{s}",
@@ -251,6 +262,17 @@ pub const Interpreter = struct {
     }
 
     fn isType(
+        value_type: []const u8,
+        expected_type: []const u8,
+    ) bool {
+        return std.mem.eql(
+            u8,
+            value_type,
+            expected_type,
+        );
+    }
+
+    fn isBothType(
         left_type: []const u8,
         right_type: []const u8,
         expected_type: []const u8,
@@ -269,7 +291,7 @@ pub const Interpreter = struct {
 
     fn evaluateUnary(
         self: *Self,
-        expr: Expression.Unary,
+        expr: Node.Unary,
         nodes: []Node,
     ) !Literal {
         const right = try self.evaluateExpression(

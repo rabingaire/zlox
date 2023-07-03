@@ -31,7 +31,7 @@ pub const Ast = struct {
         const errors = try prsr.errors.toOwnedSlice();
 
         if (builtin.mode == .Debug and errors.len == 0) {
-            const debug_value = try Expression.debugPrint(
+            const debug_value = try Node.debugPrint(
                 root,
                 nodes,
                 allocator,
@@ -63,10 +63,9 @@ pub const Ast = struct {
     }
 };
 
-pub const Node = Expression;
 pub const NodeIndex = u32;
 
-pub const Expression = union(enum) {
+pub const Node = union(enum) {
     binary: Binary,
     unary: Unary,
     grouping: Grouping,
