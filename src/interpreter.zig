@@ -28,7 +28,7 @@ pub const Interpreter = struct {
         return self.errors.items.len != 0;
     }
 
-    pub fn evaluate(tree: Ast) AllocatorError!Self {
+    pub fn evaluate(tree: Ast) !Self {
         var inter = Self{
             .allocator = tree.allocator,
             .source = tree.source,
@@ -36,17 +36,17 @@ pub const Interpreter = struct {
             .result_literal = undefined,
             .errors = std.ArrayList(RuntimeError).init(tree.allocator),
         };
-        inter.result_literal = inter.evaluateExpression(
+        inter.evaluateNode(
             inter.tree.root,
             inter.tree.nodes,
         ) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.EvalError => undefined,
+            error.EvalError => {},
+            else => return err,
         };
         return inter;
     }
 
-    pub fn print(self: *Self) !void {
+    fn print(self: *Self) !void {
         const stdout = std.io.getStdOut().writer();
         switch (self.result_literal) {
             .number => |value| try stdout.print("{d}\n", .{value}),
@@ -57,6 +57,32 @@ pub const Interpreter = struct {
             .boolean => |value| try stdout.print("{any}\n", .{value}),
             .nil => try stdout.print("nil\n", .{}),
         }
+    }
+
+    fn evaluateNode(
+        self: *Self,
+        node_index: NodeIndex,
+        nodes: []Node,
+    ) !void {
+        const node = nodes[node_index];
+        const literal = switch (node) {
+            // Statement
+            .print => |expr_node| {
+                self.result_literal = try self.evaluateExpression(
+                    expr_node,
+                    nodes,
+                );
+                try self.print();
+            },
+            // Expression
+            else => {
+                self.result_literal = try self.evaluateExpression(
+                    node_index,
+                    nodes,
+                );
+            },
+        };
+        return literal;
     }
 
     fn evaluateExpression(
@@ -79,6 +105,7 @@ pub const Interpreter = struct {
                 nodes,
             ),
             .literal => |l_node| l_node,
+            else => unreachable,
         };
         return literal;
     }

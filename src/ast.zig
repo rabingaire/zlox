@@ -66,6 +66,10 @@ pub const Ast = struct {
 pub const NodeIndex = u32;
 
 pub const Node = union(enum) {
+    // Statement
+    print: NodeIndex,
+
+    // Expression
     binary: Binary,
     unary: Unary,
     grouping: Grouping,
@@ -101,6 +105,22 @@ pub const Node = union(enum) {
     ) ![]const u8 {
         const node = nodes[node_index];
         return switch (node) {
+            // Statement
+            .print => |expr_node| blk: {
+                const value = try debugPrint(
+                    expr_node,
+                    nodes,
+                    allocator,
+                    source,
+                );
+                defer allocator.free(value);
+                break :blk try std.fmt.allocPrint(
+                    allocator,
+                    "print {s}",
+                    .{value},
+                );
+            },
+            // Expression
             .binary => |binary| blk: {
                 const left = try debugPrint(
                     binary.left,

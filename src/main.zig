@@ -59,7 +59,6 @@ fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
         try RuntimeError.print(inter);
         return;
     }
-    try inter.print();
 }
 
 test {

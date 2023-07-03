@@ -54,13 +54,28 @@ pub const Parser = struct {
     }
 
     pub fn parseRoot(self: *Self) AllocatorError!void {
-        self.root = self.parseExpression() catch |err| switch (err) {
+        self.root = self.parseStatement() catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.ParseError => return,
         };
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{any}\n", .{self.nodes.items});
+        }
+    }
+
+    fn parseStatement(self: *Self) Error!NodeIndex {
+        const current_token = self.getCurrentToken();
+        switch (current_token.token_type) {
+            Token.Type.PRINT => {
+                self.advance();
+                return self.addNode(.{
+                    .print = try self.parseExpression(),
+                });
+            },
+            else => {
+                return try self.parseExpression();
+            },
         }
     }
 
