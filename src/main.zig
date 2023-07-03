@@ -14,10 +14,6 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var args = try std.process.argsWithAllocator(allocator);
     const args_count = args.inner.count;
-    if (args_count > 2) {
-        std.debug.print("Usage: zlox [usage]\n", .{});
-        std.os.exit(0);
-    }
 
     if (args_count == 2) {
         _ = args.skip();
@@ -27,7 +23,12 @@ pub fn main() !void {
         defer allocator.free(file_contents);
 
         try run(allocator, file_contents);
+        return;
     }
+
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Usage: zlox [usage]\n", .{});
+    std.os.exit(1);
 }
 
 fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
