@@ -1,1 +1,1 @@
-print "world" + "cat"
+print 4 + 3 - 4

@@ -272,10 +272,14 @@ pub const Parser = struct {
     }
 
     fn advance(self: *Self) void {
-        const current_token = self.getCurrentToken();
-        if (current_token.token_type != Token.Type.EOF) {
+        if (!isAtEndToken(self)) {
             self.current += 1;
         }
+    }
+
+    fn isAtEndToken(self: *Self) bool {
+        const current_token = self.getCurrentToken();
+        return current_token.token_type == Token.Type.EOF;
     }
 
     fn getCurrentToken(self: Self) Token {
