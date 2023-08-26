@@ -1,1 +1,2 @@
-print 4 + "cat"; print "World" + "nepal"
+2
+print 5 + 3

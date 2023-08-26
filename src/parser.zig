@@ -294,7 +294,7 @@ pub const Parser = struct {
     }
 
     fn addNode(self: *Self, node: Node) !NodeIndex {
-        const index = @intCast(NodeIndex, self.nodes.items.len);
+        const index: NodeIndex = @intCast(self.nodes.items.len);
         try self.nodes.append(node);
         return index;
     }

@@ -350,7 +350,7 @@ pub const Interpreter = struct {
                 .data_type = data_type,
             },
         );
-        return Error.EvalError;
+        return error.EvalError;
     }
 
     fn isTruthy(lit: Literal) bool {

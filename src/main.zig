@@ -33,7 +33,7 @@ pub fn main() !void {
 
 fn runFile(allocator: std.mem.Allocator, file_name: []const u8) ![:0]const u8 {
     const file = try std.fs.cwd().openFile(file_name, .{});
-    const size = @intCast(usize, try file.getEndPos());
+    const size: usize = @intCast(try file.getEndPos());
 
     const buffer = try allocator.alloc(u8, size);
     errdefer allocator.free(buffer);
