@@ -39,7 +39,7 @@ pub const Ast = struct {
             );
             defer allocator.free(debug_value);
             std.debug.print("\n\n>>>>>>> AST Debug Info <<<<<<<\n\n", .{});
-            std.debug.print("{s}\n", .{debug_value});
+            std.debug.print("{s}", .{debug_value});
         }
 
         return Self{
@@ -58,6 +58,16 @@ pub const Ast = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.tokens);
+        for (self.nodes) |node| {
+            switch (node) {
+                .literal => |l| switch (l) {
+                    .string => |v| self.allocator.free(v),
+                    else => {},
+                },
+                .program => |p| self.allocator.free(p),
+                else => {},
+            }
+        }
         self.allocator.free(self.nodes);
         self.allocator.free(self.errors);
     }
@@ -66,6 +76,11 @@ pub const Ast = struct {
 pub const NodeIndex = u32;
 
 pub const Node = union(enum) {
+    const Self = @This();
+
+    // Program
+    program: []NodeIndex,
+
     // Statement
     print: NodeIndex,
 
@@ -105,6 +120,27 @@ pub const Node = union(enum) {
     ) ![]const u8 {
         const node = nodes[node_index];
         return switch (node) {
+            // Program
+            .program => |node_indexes| blk: {
+                var program: []u8 = "";
+                for (node_indexes) |program_node_index| {
+                    const value = try debugPrint(
+                        program_node_index,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(value);
+                    const new_program = try std.fmt.allocPrint(
+                        allocator,
+                        "{s}{s}\n",
+                        .{ program, value },
+                    );
+                    allocator.free(program);
+                    program = new_program;
+                }
+                break :blk program;
+            },
             // Statement
             .print => |expr_node| blk: {
                 const value = try debugPrint(

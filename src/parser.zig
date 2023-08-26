@@ -54,17 +54,45 @@ pub const Parser = struct {
     }
 
     pub fn parseRoot(self: *Self) AllocatorError!void {
-        self.root = self.parseStatement() catch |err| switch (err) {
+        self.root = self.parseStatements() catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.ParseError => return,
         };
+
         if (builtin.mode == .Debug) {
             std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
             std.debug.print("{any}\n", .{self.nodes.items});
         }
     }
 
-    fn parseStatement(self: *Self) Error!NodeIndex {
+    fn parseStatements(self: *Self) Error!NodeIndex {
+        var statements = std.ArrayList(NodeIndex).init(self.allocator);
+        defer statements.deinit();
+
+        while (!self.isAtEndToken()) {
+            const statement_node = try self.parseStatementOrExpression();
+            try statements.append(statement_node);
+
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.EOF => {},
+                Token.Type.SEMICOLON => {
+                    self.advance(); // skipping semicolon
+                },
+                else => {
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.SEMICOLON,
+                    );
+                },
+            }
+        }
+        return try self.addNode(.{
+            .program = try statements.toOwnedSlice(),
+        });
+    }
+
+    fn parseStatementOrExpression(self: *Self) Error!NodeIndex {
         const current_token = self.getCurrentToken();
         switch (current_token.token_type) {
             Token.Type.PRINT => {

@@ -66,6 +66,15 @@ pub const Interpreter = struct {
     ) !void {
         const node = nodes[node_index];
         const literal = switch (node) {
+            // Program
+            .program => |node_indexes| {
+                for (node_indexes) |program_node_index| {
+                    try self.evaluateNode(
+                        program_node_index,
+                        nodes,
+                    );
+                }
+            },
             // Statement
             .print => |expr_node| {
                 self.result_literal = try self.evaluateExpression(
@@ -125,22 +134,6 @@ pub const Interpreter = struct {
             nodes,
         );
         const right_type = @tagName(right);
-
-        defer {
-            const expected_type = @tagName(Literal.string);
-            if (isType(
-                left_type,
-                expected_type,
-            )) {
-                self.allocator.free(left.string);
-            }
-            if (isType(
-                right_type,
-                expected_type,
-            )) {
-                self.allocator.free(right.string);
-            }
-        }
 
         const operator = expr.operator;
 

@@ -165,7 +165,19 @@ pub const Scanner = struct {
             const ch = self.getCurrentCharAndAdvance();
             switch (ch) {
                 ' ', '\r', '\t' => {},
-                '\n' => self.newline(),
+                '\n' => {
+                    const last_token = self.tokens.getLast();
+                    switch (last_token.token_type) {
+                        Token.Type.SEMICOLON,
+                        Token.Type.LEFT_BRACE,
+                        Token.Type.RIGHT_BRACE,
+                        => {},
+                        else => {
+                            try self.addToken(.SEMICOLON, 1);
+                        },
+                    }
+                    self.newline();
+                },
                 '(' => try self.addToken(.LEFT_PAREN, 1),
                 ')' => try self.addToken(.RIGHT_PAREN, 1),
                 '{' => try self.addToken(.LEFT_BRACE, 1),
