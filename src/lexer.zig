@@ -94,6 +94,15 @@ pub const Token = struct {
                 else => null,
             };
         }
+
+        pub fn toLiteralForLiteralType(token_type: Token.Type) ?[]const u8 {
+            return switch (token_type) {
+                .IDENTIFIER => "IDENTIFIER",
+                .STRING => "STRING",
+                .NUMBER => "NUMBER",
+                else => null,
+            };
+        }
     };
 
     const keywords = std.ComptimeStringMap(Type, .{

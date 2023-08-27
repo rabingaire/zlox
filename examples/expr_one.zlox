@@ -1,2 +1,4 @@
-print "code"
-print "belongs"
+var a = 2 + 2 - 5
+print -a
+var a = "rabin"
+print a + " " + a 

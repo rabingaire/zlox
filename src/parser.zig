@@ -95,16 +95,55 @@ pub const Parser = struct {
     fn parseStatementOrExpression(self: *Self) Error!NodeIndex {
         const current_token = self.getCurrentToken();
         switch (current_token.token_type) {
+            Token.Type.VAR => {
+                self.advance();
+                return try self.parseVariable();
+            },
             Token.Type.PRINT => {
                 self.advance();
-                return self.addNode(.{
-                    .print = try self.parseExpression(),
-                });
+                return try self.parsePrint();
             },
             else => {
                 return try self.parseExpression();
             },
         }
+    }
+
+    fn parsePrint(self: *Self) Error!NodeIndex {
+        return self.addNode(.{
+            .print = try self.parseExpression(),
+        });
+    }
+
+    fn parseVariable(self: *Self) Error!NodeIndex {
+        // Parse identifier
+        var ident_token = self.getCurrentToken();
+        if (ident_token.token_type != Token.Type.IDENTIFIER) {
+            return self.addError(
+                AstError.Type.expected_token,
+                Token.Type.IDENTIFIER,
+            );
+        }
+
+        // Parse assignment operator
+        self.advance();
+        if (self.getCurrentToken().token_type != Token.Type.EQUAL) {
+            return self.addError(
+                AstError.Type.expected_token,
+                Token.Type.EQUAL,
+            );
+        }
+
+        // Parse expression
+        self.advance();
+        return try self.addNode(
+            .{
+                .variable = .{
+                    .symbol = Token.toLiteral(self.source, ident_token),
+                    .value = try self.parseExpression(),
+                },
+            },
+        );
     }
 
     fn parseExpression(self: *Self) Error!NodeIndex {
@@ -274,6 +313,11 @@ pub const Parser = struct {
                 }
                 self.advance();
                 return expr;
+            },
+            Token.Type.IDENTIFIER => blk: {
+                break :blk Node.Expression.Literal{
+                    .ident = Token.toLiteral(self.source, current_token),
+                };
             },
             else => {
                 return self.addError(

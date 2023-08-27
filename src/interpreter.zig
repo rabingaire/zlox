@@ -19,9 +19,11 @@ pub const Interpreter = struct {
     tree: Ast,
     result_literal: Literal,
     errors: std.ArrayList(RuntimeError),
+    environment: std.StringHashMap(NodeIndex),
 
     pub fn deinit(self: *Self) void {
         self.errors.deinit();
+        self.environment.deinit();
     }
 
     pub fn hasErrors(self: *Self) bool {
@@ -35,6 +37,7 @@ pub const Interpreter = struct {
             .tree = tree,
             .result_literal = undefined,
             .errors = std.ArrayList(RuntimeError).init(tree.allocator),
+            .environment = std.StringHashMap(NodeIndex).init(tree.allocator),
         };
         inter.evaluateNode(
             inter.tree.root,
@@ -56,6 +59,7 @@ pub const Interpreter = struct {
             },
             .boolean => |value| try stdout.print("{any}\n", .{value}),
             .nil => try stdout.print("nil\n", .{}),
+            else => unreachable,
         }
     }
 
@@ -82,6 +86,9 @@ pub const Interpreter = struct {
                     nodes,
                 );
                 try self.print();
+            },
+            .variable => |var_node| {
+                try self.environment.put(var_node.symbol, var_node.value);
             },
             // Expression
             else => {
@@ -110,6 +117,10 @@ pub const Interpreter = struct {
                             .{s_literal},
                         ),
                     },
+                    .ident => |i_node| self.evaluateExpression(
+                        self.environment.get(i_node) orelse unreachable,
+                        nodes,
+                    ),
                     else => l_node,
                 },
                 .grouping => |g_node| try self.evaluateExpression(
@@ -386,6 +397,7 @@ pub const Interpreter = struct {
             .string => |value| !std.mem.eql(u8, value, ""),
             .boolean => |value| value,
             .nil => false,
+            else => unreachable,
         };
     }
 };

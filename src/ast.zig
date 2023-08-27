@@ -86,6 +86,7 @@ pub const Node = union(enum) {
 
     // Statement
     print: NodeIndex,
+    variable: Variable,
 
     // Expression
     expression: Expression,
@@ -101,6 +102,7 @@ pub const Node = union(enum) {
             string: []const u8,
             boolean: bool,
             nil: void,
+            ident: []const u8,
         };
 
         pub const Grouping = struct {
@@ -117,6 +119,10 @@ pub const Node = union(enum) {
             operator: Token,
             right: NodeIndex,
         };
+    };
+    const Variable = struct {
+        symbol: []const u8,
+        value: NodeIndex, // Expression
     };
 
     fn debugPrint(
@@ -163,6 +169,20 @@ pub const Node = union(enum) {
                     .{value},
                 );
             },
+            .variable => |var_node| blk: {
+                const value = try debugPrint(
+                    var_node.value,
+                    nodes,
+                    allocator,
+                    source,
+                );
+                defer allocator.free(value);
+                break :blk try std.fmt.allocPrint(
+                    allocator,
+                    "var {s} = {s}",
+                    .{ var_node.symbol, value },
+                );
+            },
             // Expression
             .expression => |expr_node| switch (expr_node) {
                 .literal => |literal| switch (literal) {
@@ -185,6 +205,11 @@ pub const Node = union(enum) {
                         allocator,
                         "nil",
                         .{},
+                    ),
+                    .ident => try std.fmt.allocPrint(
+                        allocator,
+                        "{s}",
+                        .{literal.ident},
                     ),
                 },
                 .grouping => |grouping| blk: {
@@ -271,7 +296,7 @@ pub const Error = struct {
                         .{
                             Token.Type.toLiteral(
                                 parse_error.expected_token_type.?,
-                            ).?,
+                            ) orelse Token.Type.toLiteralForLiteralType(parse_error.expected_token_type.?).?,
                             Token.toLiteral(
                                 tree.source,
                                 parse_error.current_token,
