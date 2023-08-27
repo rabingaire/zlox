@@ -102,7 +102,16 @@ pub const Interpreter = struct {
         const node = nodes[node_index];
         const literal = switch (node) {
             .expression => |e_node| switch (e_node) {
-                .literal => |l_node| l_node,
+                .literal => |l_node| switch (l_node) {
+                    .string => |s_literal| Literal{
+                        .string = try std.fmt.allocPrint(
+                            self.allocator,
+                            "{s}",
+                            .{s_literal},
+                        ),
+                    },
+                    else => l_node,
+                },
                 .grouping => |g_node| try self.evaluateExpression(
                     g_node.expression,
                     nodes,
@@ -136,6 +145,22 @@ pub const Interpreter = struct {
             nodes,
         );
         const right_type = @tagName(right);
+
+        defer {
+            const expected_type = @tagName(Literal.string);
+            if (isType(
+                left_type,
+                expected_type,
+            )) {
+                self.allocator.free(left.string);
+            }
+            if (isType(
+                right_type,
+                expected_type,
+            )) {
+                self.allocator.free(right.string);
+            }
+        }
 
         const operator = expr.operator;
 
