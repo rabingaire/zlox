@@ -5,7 +5,7 @@ const ast = @import("ast.zig");
 const Ast = ast.Ast;
 const Node = ast.Node;
 const NodeIndex = ast.NodeIndex;
-const Literal = Node.Literal;
+const Literal = Node.Expression.Literal;
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
 
@@ -101,19 +101,21 @@ pub const Interpreter = struct {
     ) Error!Literal {
         const node = nodes[node_index];
         const literal = switch (node) {
-            .binary => |b_node| try self.evaluateBinary(
-                b_node,
-                nodes,
-            ),
-            .unary => |u_node| try self.evaluateUnary(
-                u_node,
-                nodes,
-            ),
-            .grouping => |g_node| try self.evaluateExpression(
-                g_node.expression,
-                nodes,
-            ),
-            .literal => |l_node| l_node,
+            .expression => |e_node| switch (e_node) {
+                .literal => |l_node| l_node,
+                .grouping => |g_node| try self.evaluateExpression(
+                    g_node.expression,
+                    nodes,
+                ),
+                .unary => |u_node| try self.evaluateUnary(
+                    u_node,
+                    nodes,
+                ),
+                .binary => |b_node| try self.evaluateBinary(
+                    b_node,
+                    nodes,
+                ),
+            },
             else => unreachable,
         };
         return literal;
@@ -121,7 +123,7 @@ pub const Interpreter = struct {
 
     fn evaluateBinary(
         self: *Self,
-        expr: Node.Binary,
+        expr: Node.Expression.Binary,
         nodes: []Node,
     ) !Literal {
         const left = try self.evaluateExpression(
@@ -311,7 +313,7 @@ pub const Interpreter = struct {
 
     fn evaluateUnary(
         self: *Self,
-        expr: Node.Unary,
+        expr: Node.Expression.Unary,
         nodes: []Node,
     ) !Literal {
         const right = try self.evaluateExpression(

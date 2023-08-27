@@ -60,8 +60,11 @@ pub const Ast = struct {
         self.allocator.free(self.tokens);
         for (self.nodes) |node| {
             switch (node) {
-                .literal => |l| switch (l) {
-                    .string => |v| self.allocator.free(v),
+                .expression => |e| switch (e) {
+                    .literal => |l| switch (l) {
+                        .string => |v| self.allocator.free(v),
+                        else => {},
+                    },
                     else => {},
                 },
                 .program => |p| self.allocator.free(p),
@@ -85,31 +88,35 @@ pub const Node = union(enum) {
     print: NodeIndex,
 
     // Expression
-    binary: Binary,
-    unary: Unary,
-    grouping: Grouping,
-    literal: Literal,
+    expression: Expression,
 
-    pub const Literal = union(enum) {
-        number: f64,
-        string: []const u8,
-        boolean: bool,
-        nil: void,
-    };
+    pub const Expression = union(enum) {
+        literal: Literal,
+        grouping: Grouping,
+        unary: Unary,
+        binary: Binary,
 
-    pub const Binary = struct {
-        left: NodeIndex,
-        operator: Token,
-        right: NodeIndex,
-    };
+        pub const Literal = union(enum) {
+            number: f64,
+            string: []const u8,
+            boolean: bool,
+            nil: void,
+        };
 
-    pub const Unary = struct {
-        operator: Token,
-        right: NodeIndex,
-    };
+        pub const Grouping = struct {
+            expression: NodeIndex,
+        };
 
-    pub const Grouping = struct {
-        expression: NodeIndex,
+        pub const Unary = struct {
+            operator: Token,
+            right: NodeIndex,
+        };
+
+        pub const Binary = struct {
+            left: NodeIndex,
+            operator: Token,
+            right: NodeIndex,
+        };
     };
 
     fn debugPrint(
@@ -157,78 +164,80 @@ pub const Node = union(enum) {
                 );
             },
             // Expression
-            .binary => |binary| blk: {
-                const left = try debugPrint(
-                    binary.left,
-                    nodes,
-                    allocator,
-                    source,
-                );
-                defer allocator.free(left);
-                const right = try debugPrint(
-                    binary.right,
-                    nodes,
-                    allocator,
-                    source,
-                );
-                defer allocator.free(right);
-                const operator = Token.toLiteral(source, binary.operator);
-                break :blk try std.fmt.allocPrint(
-                    allocator,
-                    "( {s} {s} {s} )",
-                    .{ left, operator, right },
-                );
-            },
-            .unary => |unary| blk: {
-                const right = try debugPrint(
-                    unary.right,
-                    nodes,
-                    allocator,
-                    source,
-                );
-                defer allocator.free(right);
-                const operator = Token.toLiteral(source, unary.operator);
-                break :blk try std.fmt.allocPrint(
-                    allocator,
-                    "( {s} {s} )",
-                    .{ operator, right },
-                );
-            },
-            .grouping => |grouping| blk: {
-                const expr = try debugPrint(
-                    grouping.expression,
-                    nodes,
-                    allocator,
-                    source,
-                );
-                defer allocator.free(expr);
-                break :blk try std.fmt.allocPrint(
-                    allocator,
-                    "( {s} )",
-                    .{expr},
-                );
-            },
-            .literal => |literal| switch (literal) {
-                .number => try std.fmt.allocPrint(
-                    allocator,
-                    "{d}",
-                    .{literal.number},
-                ),
-                .string => try std.fmt.allocPrint(
-                    allocator,
-                    "\"{s}\"",
-                    .{literal.string},
-                ),
-                .boolean => try std.fmt.allocPrint(
-                    allocator,
-                    "{any}",
-                    .{literal.boolean},
-                ),
-                .nil => try std.fmt.allocPrint(
-                    allocator,
-                    "nil",
-                    .{},
-                ),
+            .expression => |expr_node| switch (expr_node) {
+                .literal => |literal| switch (literal) {
+                    .number => try std.fmt.allocPrint(
+                        allocator,
+                        "{d}",
+                        .{literal.number},
+                    ),
+                    .string => try std.fmt.allocPrint(
+                        allocator,
+                        "\"{s}\"",
+                        .{literal.string},
+                    ),
+                    .boolean => try std.fmt.allocPrint(
+                        allocator,
+                        "{any}",
+                        .{literal.boolean},
+                    ),
+                    .nil => try std.fmt.allocPrint(
+                        allocator,
+                        "nil",
+                        .{},
+                    ),
+                },
+                .grouping => |grouping| blk: {
+                    const expr = try debugPrint(
+                        grouping.expression,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(expr);
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "( {s} )",
+                        .{expr},
+                    );
+                },
+                .unary => |unary| blk: {
+                    const right = try debugPrint(
+                        unary.right,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(right);
+                    const operator = Token.toLiteral(source, unary.operator);
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "( {s} {s} )",
+                        .{ operator, right },
+                    );
+                },
+                .binary => |binary| blk: {
+                    const left = try debugPrint(
+                        binary.left,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(left);
+                    const right = try debugPrint(
+                        binary.right,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(right);
+                    const operator = Token.toLiteral(source, binary.operator);
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "( {s} {s} {s} )",
+                        .{ left, operator, right },
+                    );
+                },
             },
         };
     }

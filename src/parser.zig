@@ -122,10 +122,12 @@ pub const Parser = struct {
                     self.advance();
                     expr = try self.addNode(
                         .{
-                            .binary = .{
-                                .left = expr,
-                                .operator = current_token,
-                                .right = try self.comparison(),
+                            .expression = .{
+                                .binary = .{
+                                    .left = expr,
+                                    .operator = current_token,
+                                    .right = try self.comparison(),
+                                },
                             },
                         },
                     );
@@ -148,10 +150,12 @@ pub const Parser = struct {
                     self.advance();
                     expr = try self.addNode(
                         .{
-                            .binary = .{
-                                .left = expr,
-                                .operator = current_token,
-                                .right = try self.factor(),
+                            .expression = .{
+                                .binary = .{
+                                    .left = expr,
+                                    .operator = current_token,
+                                    .right = try self.factor(),
+                                },
                             },
                         },
                     );
@@ -172,10 +176,12 @@ pub const Parser = struct {
                     self.advance();
                     expr = try self.addNode(
                         .{
-                            .binary = .{
-                                .left = expr,
-                                .operator = current_token,
-                                .right = try self.factor(),
+                            .expression = .{
+                                .binary = .{
+                                    .left = expr,
+                                    .operator = current_token,
+                                    .right = try self.factor(),
+                                },
                             },
                         },
                     );
@@ -196,10 +202,12 @@ pub const Parser = struct {
                     self.advance();
                     expr = try self.addNode(
                         .{
-                            .binary = .{
-                                .left = expr,
-                                .operator = current_token,
-                                .right = try self.unary(),
+                            .expression = .{
+                                .binary = .{
+                                    .left = expr,
+                                    .operator = current_token,
+                                    .right = try self.unary(),
+                                },
                             },
                         },
                     );
@@ -218,9 +226,11 @@ pub const Parser = struct {
                 self.advance();
                 return try self.addNode(
                     .{
-                        .unary = .{
-                            .operator = current_token,
-                            .right = try self.unary(),
+                        .expression = .{
+                            .unary = .{
+                                .operator = current_token,
+                                .right = try self.unary(),
+                            },
                         },
                     },
                 );
@@ -232,14 +242,14 @@ pub const Parser = struct {
     fn primary(self: *Self) !NodeIndex {
         const current_token = self.getCurrentToken();
         const literal = switch (current_token.token_type) {
-            Token.Type.TRUE => Node.Literal{ .boolean = true },
-            Token.Type.FALSE => Node.Literal{ .boolean = false },
+            Token.Type.TRUE => Node.Expression.Literal{ .boolean = true },
+            Token.Type.FALSE => Node.Expression.Literal{ .boolean = false },
             Token.Type.NUMBER => blk: {
                 const value = std.fmt.parseFloat(
                     f64,
                     Token.toLiteral(self.source, current_token),
                 ) catch unreachable;
-                break :blk Node.Literal{ .number = value };
+                break :blk Node.Expression.Literal{ .number = value };
             },
             Token.Type.STRING => blk: {
                 const value = try std.fmt.allocPrint(
@@ -247,11 +257,11 @@ pub const Parser = struct {
                     "{s}",
                     .{Token.toLiteral(self.source, current_token)},
                 );
-                break :blk Node.Literal{
+                break :blk Node.Expression.Literal{
                     .string = value,
                 };
             },
-            Token.Type.NIL => Node.Literal{ .nil = {} },
+            Token.Type.NIL => Node.Expression.Literal{ .nil = {} },
             Token.Type.LEFT_PAREN => {
                 self.advance();
                 const expr = try self.parseExpression();
@@ -275,7 +285,7 @@ pub const Parser = struct {
         self.advance();
         return try self.addNode(
             .{
-                .literal = literal,
+                .expression = .{ .literal = literal },
             },
         );
     }
