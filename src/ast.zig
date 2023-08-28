@@ -102,7 +102,7 @@ pub const Node = union(enum) {
             string: []const u8,
             boolean: bool,
             nil: void,
-            ident: []const u8,
+            ident: Token,
         };
 
         pub const Grouping = struct {
@@ -120,8 +120,9 @@ pub const Node = union(enum) {
             right: NodeIndex,
         };
     };
+
     const Variable = struct {
-        symbol: []const u8,
+        symbol: Token,
         value: NodeIndex, // Expression
     };
 
@@ -180,7 +181,7 @@ pub const Node = union(enum) {
                 break :blk try std.fmt.allocPrint(
                     allocator,
                     "var {s} = {s}",
-                    .{ var_node.symbol, value },
+                    .{ Token.toLiteral(source, var_node.symbol), value },
                 );
             },
             // Expression
@@ -209,7 +210,7 @@ pub const Node = union(enum) {
                     .ident => try std.fmt.allocPrint(
                         allocator,
                         "{s}",
-                        .{literal.ident},
+                        .{Token.toLiteral(source, literal.ident)},
                     ),
                 },
                 .grouping => |grouping| blk: {

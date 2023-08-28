@@ -139,7 +139,7 @@ pub const Parser = struct {
         return try self.addNode(
             .{
                 .variable = .{
-                    .symbol = Token.toLiteral(self.source, ident_token),
+                    .symbol = ident_token,
                     .value = try self.parseExpression(),
                 },
             },
@@ -316,7 +316,7 @@ pub const Parser = struct {
             },
             Token.Type.IDENTIFIER => blk: {
                 break :blk Node.Expression.Literal{
-                    .ident = Token.toLiteral(self.source, current_token),
+                    .ident = current_token,
                 };
             },
             else => {

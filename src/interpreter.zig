@@ -88,7 +88,10 @@ pub const Interpreter = struct {
                 try self.print();
             },
             .variable => |var_node| {
-                try self.environment.put(var_node.symbol, var_node.value);
+                try self.environment.put(
+                    Token.toLiteral(self.source, var_node.symbol),
+                    var_node.value,
+                );
             },
             // Expression
             else => {
@@ -118,7 +121,17 @@ pub const Interpreter = struct {
                         ),
                     },
                     .ident => |i_node| self.evaluateExpression(
-                        self.environment.get(i_node) orelse unreachable,
+                        self.environment.get(
+                            Token.toLiteral(self.source, i_node),
+                        ) orelse {
+                            return self.addError(
+                                .undefined_variable,
+                                i_node,
+                                RuntimeError.DataTypeInfo{
+                                    .right = "",
+                                },
+                            );
+                        },
                         nodes,
                     ),
                     else => l_node,
@@ -413,6 +426,7 @@ pub const RuntimeError = struct {
     data_type: DataTypeInfo,
 
     pub const Type = enum {
+        undefined_variable,
         invalid_binary_operation,
         invalid_unary_operation,
     };
@@ -438,10 +452,18 @@ pub const RuntimeError = struct {
                 },
                 .invalid_unary_operation => {
                     try stderr.print(
-                        "Bad unary operator '{s} for operand of type '{s}'\n",
+                        "Bad unary operator '{s}' for operand of type '{s}'\n",
                         .{
                             Token.toLiteral(inter.source, eval_error.token),
                             eval_error.data_type.right,
+                        },
+                    );
+                },
+                .undefined_variable => {
+                    try stderr.print(
+                        "Undefined variable '{s}'\n",
+                        .{
+                            Token.toLiteral(inter.source, eval_error.token),
                         },
                     );
                 },
