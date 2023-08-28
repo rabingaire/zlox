@@ -1,2 +1,2 @@
-var a = 20;
+var a = "nepal";
 print a + b;

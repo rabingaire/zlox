@@ -164,6 +164,16 @@ pub const Interpreter = struct {
             nodes,
         );
         const left_type = @tagName(left);
+
+        defer {
+            if (isType(
+                left_type,
+                @tagName(Literal.string),
+            )) {
+                self.allocator.free(left.string);
+            }
+        }
+
         const right = try self.evaluateExpression(
             expr.right,
             nodes,
@@ -171,16 +181,9 @@ pub const Interpreter = struct {
         const right_type = @tagName(right);
 
         defer {
-            const expected_type = @tagName(Literal.string);
-            if (isType(
-                left_type,
-                expected_type,
-            )) {
-                self.allocator.free(left.string);
-            }
             if (isType(
                 right_type,
-                expected_type,
+                @tagName(Literal.string),
             )) {
                 self.allocator.free(right.string);
             }
