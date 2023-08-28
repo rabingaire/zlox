@@ -30,7 +30,7 @@ pub const Ast = struct {
         const nodes = try prsr.nodes.toOwnedSlice();
         const errors = try prsr.errors.toOwnedSlice();
 
-        if (builtin.mode == .Debug and errors.len == 0) {
+        if (builtin.mode == .Debug and !builtin.is_test and errors.len == 0) {
             const debug_value = try Node.debugPrint(
                 root,
                 nodes,
@@ -38,7 +38,7 @@ pub const Ast = struct {
                 source,
             );
             defer allocator.free(debug_value);
-            std.log.debug("\n{s}", .{debug_value});
+            std.debug.print("\n\nAST Debug Info:\n{s}\n\n", .{debug_value});
         }
 
         return Self{

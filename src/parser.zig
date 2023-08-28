@@ -1,5 +1,6 @@
 const std = @import("std");
 const AllocatorError = std.mem.Allocator.Error;
+const builtin = @import("builtin");
 
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
@@ -31,6 +32,16 @@ pub const Parser = struct {
 
         const tokens = try scanner.tokens.toOwnedSlice();
 
+        if (builtin.mode == .Debug and !builtin.is_test) {
+            std.debug.print("Lexer Debug Info:\n", .{});
+            for (tokens) |token| {
+                std.debug.print(
+                    "Type: {any} Literal: {s}\n\t{any}\n",
+                    .{ token.token_type, Token.toLiteral(source, token), token },
+                );
+            }
+        }
+
         return Self{
             .source = source,
             .tokens = tokens,
@@ -46,6 +57,13 @@ pub const Parser = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.ParseError => return,
         };
+
+        if (builtin.mode == .Debug and !builtin.is_test) {
+            std.debug.print(
+                "\n\nParser Debug Info:\n{any}\n",
+                .{self.nodes.items},
+            );
+        }
     }
 
     fn parseStatements(self: *Self) Error!NodeIndex {
