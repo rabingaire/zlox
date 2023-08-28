@@ -1,6 +1,5 @@
 const std = @import("std");
 const AllocatorError = std.mem.Allocator.Error;
-const builtin = @import("builtin");
 
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
@@ -32,17 +31,6 @@ pub const Parser = struct {
 
         const tokens = try scanner.tokens.toOwnedSlice();
 
-        if (builtin.mode == .Debug) {
-            std.debug.print(">>>>>>> Lexer Debug Info <<<<<<<\n\n", .{});
-            for (tokens) |token| {
-                std.debug.print(
-                    "Type: {any} Literal: {s}\n",
-                    .{ token.token_type, Token.toLiteral(source, token) },
-                );
-                std.debug.print("\t{any}\n", .{token});
-            }
-        }
-
         return Self{
             .source = source,
             .tokens = tokens,
@@ -58,11 +46,6 @@ pub const Parser = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.ParseError => return,
         };
-
-        if (builtin.mode == .Debug) {
-            std.debug.print("\n\n>>>>>>> Parser Debug Info <<<<<<<\n\n", .{});
-            std.debug.print("{any}\n", .{self.nodes.items});
-        }
     }
 
     fn parseStatements(self: *Self) Error!NodeIndex {
@@ -368,3 +351,73 @@ pub const Parser = struct {
         return self.tokens[self.current];
     }
 };
+
+test "check if parser detects parse errors correctly" {
+    try testError(
+        \\ "hello" +
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a = (("hello" + "world") +;
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ print (("hello" + "world") +;
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ print 5 - 3 *;
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ print + 5 - 3;
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a : 12
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ var 12 = 13
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ var a = ((2 + 3) + 4;
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ print ("world" + "cat";
+    ,
+        &.{.expected_token},
+    );
+}
+
+fn testError(source: [:0]const u8, expected_errors: []const AstError.Type) !void {
+    var tree = try Ast.parse(std.testing.allocator, source);
+    defer tree.deinit();
+
+    std.testing.expect(tree.hasErrors()) catch |err| {
+        std.debug.print("expected errors: {any}\n", .{expected_errors});
+        return err;
+    };
+
+    for (expected_errors, 0..) |expected, i| {
+        try std.testing.expectEqual(expected, tree.errors[i].error_type);
+    }
+}

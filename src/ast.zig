@@ -38,8 +38,7 @@ pub const Ast = struct {
                 source,
             );
             defer allocator.free(debug_value);
-            std.debug.print("\n\n>>>>>>> AST Debug Info <<<<<<<\n\n", .{});
-            std.debug.print("{s}", .{debug_value});
+            std.log.debug("\n{s}", .{debug_value});
         }
 
         return Self{

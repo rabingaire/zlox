@@ -1,5 +1,6 @@
 const std = @import("std");
 const AllocatorError = std.mem.Allocator.Error;
+const builtin = @import("builtin");
 
 const ast = @import("ast.zig");
 const Ast = ast.Ast;
@@ -18,10 +19,12 @@ pub const Interpreter = struct {
     source: [:0]const u8,
     tree: Ast,
     result_literal: Literal,
+    final_result: []const u8,
     errors: std.ArrayList(RuntimeError),
     environment: std.StringHashMap(NodeIndex),
 
     pub fn deinit(self: *Self) void {
+        self.allocator.free(self.final_result);
         self.errors.deinit();
         self.environment.deinit();
     }
@@ -36,30 +39,36 @@ pub const Interpreter = struct {
             .source = tree.source,
             .tree = tree,
             .result_literal = undefined,
+            .final_result = undefined,
             .errors = std.ArrayList(RuntimeError).init(tree.allocator),
             .environment = std.StringHashMap(NodeIndex).init(tree.allocator),
         };
-        inter.evaluateNode(
+
+        inter.final_result = inter.evaluateNode(
             inter.tree.root,
             inter.tree.nodes,
         ) catch |err| switch (err) {
-            error.EvalError => {},
+            error.EvalError => "",
             else => return err,
         };
+
         return inter;
     }
 
-    fn print(self: *Self) !void {
-        const stdout = std.io.getStdOut().writer();
-        switch (self.result_literal) {
-            .number => |value| try stdout.print("{d}\n", .{value}),
-            .string => |value| {
-                defer self.allocator.free(value);
-                try stdout.print("{s}\n", .{value});
-            },
-            .boolean => |value| try stdout.print("{any}\n", .{value}),
-            .nil => try stdout.print("nil\n", .{}),
+    fn result_value(self: *Self) ![]const u8 {
+        return switch (self.result_literal) {
+            .number => |value| try std.fmt.allocPrint(self.allocator, "{d}", .{value}),
+            .string => |value| value,
+            .boolean => |value| try std.fmt.allocPrint(self.allocator, "{any}", .{value}),
+            .nil => try std.fmt.allocPrint(self.allocator, "nil", .{}),
             else => unreachable,
+        };
+    }
+
+    fn print(result: []const u8) !void {
+        const stdout = std.io.getStdOut().writer();
+        if (!builtin.is_test) {
+            try stdout.print("{s}\n", .{result});
         }
     }
 
@@ -67,17 +76,22 @@ pub const Interpreter = struct {
         self: *Self,
         node_index: NodeIndex,
         nodes: []Node,
-    ) !void {
+    ) ![]const u8 {
         const node = nodes[node_index];
-        const literal = switch (node) {
+        return switch (node) {
             // Program
             .program => |node_indexes| {
-                for (node_indexes) |program_node_index| {
-                    try self.evaluateNode(
+                var result: []const u8 = "";
+                for (node_indexes, 1..) |program_node_index, i| {
+                    result = try self.evaluateNode(
                         program_node_index,
                         nodes,
                     );
+                    if (node_indexes.len != i) {
+                        self.allocator.free(result);
+                    }
                 }
+                return result;
             },
             // Statement
             .print => |expr_node| {
@@ -85,13 +99,16 @@ pub const Interpreter = struct {
                     expr_node,
                     nodes,
                 );
-                try self.print();
+                const result = try self.result_value();
+                try print(result);
+                return result;
             },
             .variable => |var_node| {
                 try self.environment.put(
                     Token.toLiteral(self.source, var_node.symbol),
                     var_node.value,
                 );
+                return "";
             },
             // Expression
             else => {
@@ -99,9 +116,9 @@ pub const Interpreter = struct {
                     node_index,
                     nodes,
                 );
+                return try self.result_value();
             },
         };
-        return literal;
     }
 
     fn evaluateExpression(
@@ -372,6 +389,17 @@ pub const Interpreter = struct {
             expr.right,
             nodes,
         );
+        const right_type = @tagName(right);
+
+        defer {
+            if (isType(
+                right_type,
+                @tagName(Literal.string),
+            )) {
+                self.allocator.free(right.string);
+            }
+        }
+
         const operator = expr.operator;
         return switch (operator.token_type) {
             .BANG => Literal{ .boolean = !isTruthy(right) },
@@ -474,3 +502,184 @@ pub const RuntimeError = struct {
         }
     }
 };
+
+test "check if interpreter evaluates to correct value" {
+    try testEvaluate(
+        \\ "hello"
+    ,
+        "hello",
+    );
+
+    try testEvaluate(
+        \\ var foo = "hello";
+        \\var bar = "world"
+        \\ print foo + " " + bar;
+    ,
+        "hello world",
+    );
+
+    try testEvaluate(
+        \\ var a = -2 + 3;
+        \\ print a;
+    ,
+        "1",
+    );
+
+    try testEvaluate(
+        \\ var a = 2 + 3 - (4 / 5) * 2;
+        \\ print a;
+    ,
+        "3.4",
+    );
+
+    try testEvaluate(
+        \\ var a = 5 == 2
+        \\ var b = "hello" == "world"
+        \\ print a == b
+    ,
+        "true",
+    );
+
+    try testEvaluate(
+        \\ var a = 5 == 5
+        \\ var b = "hello" == "hello"
+        \\ print a == b
+    ,
+        "true",
+    );
+
+    try testEvaluate(
+        \\ var a = 5 >= 5;
+        \\ var b = 3 <= 5;
+        \\ print a == b;
+    ,
+        "true",
+    );
+
+    try testEvaluate(
+        \\ var a = !true;
+        \\ print a;
+    ,
+        "false",
+    );
+
+    try testEvaluate(
+        \\ var a = !false;
+        \\ print a;
+    ,
+        "true",
+    );
+
+    try testEvaluate(
+        \\ var a = !"cat";
+        \\ print a;
+    ,
+        "false",
+    );
+
+    try testEvaluate(
+        \\ var a = !!"0";
+        \\ print a;
+    ,
+        "true",
+    );
+
+    try testEvaluate(
+        \\ var a = !!"0";
+        \\ var b = !a;
+        \\ print b;
+    ,
+        "false",
+    );
+}
+
+test "check if interpreter detects runtime errors correctly" {
+    try testError(
+        \\ print "hello" + 2
+    ,
+        &.{.invalid_binary_operation},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ print a + a - a
+    ,
+        &.{.invalid_binary_operation},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ print a * a / a
+    ,
+        &.{.invalid_binary_operation},
+    );
+
+    try testError(
+        \\ var a = 2
+        \\ print (a * a) / "cat"
+    ,
+        &.{.invalid_binary_operation},
+    );
+
+    try testError(
+        \\ print -"world"
+    ,
+        &.{.invalid_unary_operation},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ print b
+    ,
+        &.{.undefined_variable},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ print a + a + b
+    ,
+        &.{.undefined_variable},
+    );
+}
+
+fn testEvaluate(source: [:0]const u8, expected_result: []const u8) !void {
+    var tree = try Ast.parse(std.testing.allocator, source);
+    defer tree.deinit();
+
+    std.testing.expect(!tree.hasErrors()) catch |err| {
+        std.debug.print("parser errors: {any}\n", .{tree.errors});
+        return err;
+    };
+
+    var inter = try Interpreter.evaluate(tree);
+    defer inter.deinit();
+
+    std.testing.expect(!inter.hasErrors()) catch |err| {
+        std.debug.print("interpreter errors: {any}\n", .{tree.errors});
+        return err;
+    };
+
+    try std.testing.expectEqualDeep(expected_result, inter.final_result);
+}
+
+fn testError(source: [:0]const u8, expected_errors: []const RuntimeError.Type) !void {
+    var tree = try Ast.parse(std.testing.allocator, source);
+    defer tree.deinit();
+
+    std.testing.expect(!tree.hasErrors()) catch |err| {
+        std.debug.print("parser errors: {any}\n", .{tree.errors});
+        return err;
+    };
+
+    var inter = try Interpreter.evaluate(tree);
+    defer inter.deinit();
+
+    std.testing.expect(inter.hasErrors()) catch |err| {
+        std.debug.print("expected errors: {any}\n", .{expected_errors});
+        return err;
+    };
+
+    for (expected_errors, 0..) |expected, i| {
+        try std.testing.expectEqual(expected, inter.errors.items[i].error_type);
+    }
+}

@@ -63,4 +63,6 @@ fn run(allocator: std.mem.Allocator, file_contents: [:0]const u8) !void {
 
 test {
     _ = @import("./lexer.zig");
+    _ = @import("./parser.zig");
+    _ = @import("./interpreter.zig");
 }
