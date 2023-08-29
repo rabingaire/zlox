@@ -1,13 +1,6 @@
-var a = 10;
+var a = "Hello";
 {
-  var a = 20;
+  // var a = "cat";
   print a;
-  {
-    var a = 30;
-    print a;
-    {
-      print "hello"
-    }
-  }
 }
 print a;

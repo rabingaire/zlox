@@ -21,12 +21,12 @@ pub const Interpreter = struct {
     result_literal: Literal,
     final_result: []const u8,
     errors: std.ArrayList(RuntimeError),
-    environment: std.StringHashMap(NodeIndex),
+    environments: std.ArrayList(*std.StringHashMap(NodeIndex)),
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.final_result);
         self.errors.deinit();
-        self.environment.deinit();
+        self.environments.deinit();
     }
 
     pub fn hasErrors(self: *Self) bool {
@@ -41,7 +41,7 @@ pub const Interpreter = struct {
             .result_literal = undefined,
             .final_result = undefined,
             .errors = std.ArrayList(RuntimeError).init(tree.allocator),
-            .environment = std.StringHashMap(NodeIndex).init(tree.allocator),
+            .environments = std.ArrayList(*std.StringHashMap(NodeIndex)).init(tree.allocator),
         };
 
         inter.final_result = inter.evaluateNode(
@@ -81,6 +81,10 @@ pub const Interpreter = struct {
         return switch (node) {
             // Program
             .program => |node_indexes| {
+                var new_environment = std.StringHashMap(NodeIndex).init(self.allocator);
+                try self.environments.append(&new_environment);
+                defer self.environments.pop().deinit();
+
                 var result: []const u8 = "";
                 for (node_indexes, 1..) |program_node_index, i| {
                     result = try self.evaluateNode(
@@ -104,13 +108,18 @@ pub const Interpreter = struct {
                 return result;
             },
             .variable => |var_node| {
-                try self.environment.put(
+                const environment = self.environments.getLast();
+                try environment.put(
                     Token.toLiteral(self.source, var_node.symbol),
                     var_node.value,
                 );
                 return "";
             },
             .block => |block_node| {
+                var new_environment = std.StringHashMap(NodeIndex).init(self.allocator);
+                try self.environments.append(&new_environment);
+                defer self.environments.pop().deinit();
+
                 var result: []const u8 = "";
                 for (block_node.statement_indexes, 1..) |statement_index, i| {
                     result = try self.evaluateNode(
@@ -150,20 +159,28 @@ pub const Interpreter = struct {
                             .{s_literal},
                         ),
                     },
-                    .ident => |i_node| self.evaluateExpression(
-                        self.environment.get(
-                            Token.toLiteral(self.source, i_node),
-                        ) orelse {
-                            return self.addError(
-                                .undefined_variable,
-                                i_node,
-                                RuntimeError.DataTypeInfo{
-                                    .right = "",
-                                },
+                    .ident => |i_node| blk: {
+                        var idx = self.environments.items.len;
+                        while (idx > 0) : (idx -= 1) {
+                            const environment = self.environments.items[idx - 1];
+                            const value = environment.get(
+                                Token.toLiteral(self.source, i_node),
+                            ) orelse {
+                                continue;
+                            };
+                            break :blk self.evaluateExpression(
+                                value,
+                                nodes,
                             );
-                        },
-                        nodes,
-                    ),
+                        }
+                        return self.addError(
+                            .undefined_variable,
+                            i_node,
+                            RuntimeError.DataTypeInfo{
+                                .right = "",
+                            },
+                        );
+                    },
                     else => l_node,
                 },
                 .grouping => |g_node| try self.evaluateExpression(
