@@ -67,6 +67,7 @@ pub const Ast = struct {
                     else => {},
                 },
                 .program => |p| self.allocator.free(p),
+                .block => |b| self.allocator.free(b.statement_indexes),
                 else => {},
             }
         }
@@ -86,6 +87,7 @@ pub const Node = union(enum) {
     // Statement
     print: NodeIndex,
     variable: Variable,
+    block: Block, // TODO: Language design thoughts, Maybe this should be an expression
 
     // Expression
     expression: Expression,
@@ -125,6 +127,26 @@ pub const Node = union(enum) {
         value: NodeIndex, // Expression
     };
 
+    const Block = struct {
+        depth: u32,
+        statement_indexes: []NodeIndex,
+    };
+
+    fn generateMultipleOf(allocator: std.mem.Allocator, str: []const u8, count: usize) ![]const u8 {
+        var tab: []const u8 = "";
+        var idx: u32 = 0;
+        while (idx < count) : (idx += 1) {
+            const new_tab = try std.fmt.allocPrint(
+                allocator,
+                "{s}{s}",
+                .{ tab, str },
+            );
+            allocator.free(tab);
+            tab = new_tab;
+        }
+        return tab;
+    }
+
     fn debugPrint(
         node_index: NodeIndex,
         nodes: []Node,
@@ -135,7 +157,7 @@ pub const Node = union(enum) {
         return switch (node) {
             // Program
             .program => |node_indexes| blk: {
-                var program: []u8 = "";
+                var program: []const u8 = "";
                 for (node_indexes) |program_node_index| {
                     const value = try debugPrint(
                         program_node_index,
@@ -182,6 +204,39 @@ pub const Node = union(enum) {
                     "var {s} = {s}",
                     .{ Token.toLiteral(source, var_node.symbol), value },
                 );
+            },
+            .block => |block_node| blk: {
+                var program = try std.fmt.allocPrint(
+                    allocator,
+                    "{s}\n",
+                    .{"{"},
+                );
+                const space = "  ";
+                const tab = try generateMultipleOf(allocator, space, block_node.depth - 1);
+                defer allocator.free(tab);
+                for (block_node.statement_indexes) |statement_index| {
+                    const value = try debugPrint(
+                        statement_index,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(value);
+                    const new_program = try std.fmt.allocPrint(
+                        allocator,
+                        "{s}{s}{s}{s}\n",
+                        .{ program, space, tab, value },
+                    );
+                    allocator.free(program);
+                    program = new_program;
+                }
+                const new_program = try std.fmt.allocPrint(
+                    allocator,
+                    "{s}{s}{s}",
+                    .{ program, tab, "}" },
+                );
+                defer allocator.free(program);
+                break :blk new_program;
             },
             // Expression
             .expression => |expr_node| switch (expr_node) {

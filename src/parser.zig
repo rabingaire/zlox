@@ -23,6 +23,7 @@ pub const Parser = struct {
     root: NodeIndex,
     allocator: std.mem.Allocator,
     current: u32 = 0,
+    depth: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, source: [:0]const u8) Error!Self {
         var scanner = Scanner.init(allocator, source);
@@ -77,8 +78,10 @@ pub const Parser = struct {
             const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
                 Token.Type.EOF => {},
-                Token.Type.SEMICOLON => {
-                    self.advance(); // skipping semicolon
+                Token.Type.SEMICOLON,
+                Token.Type.RIGHT_BRACE,
+                => {
+                    self.advance();
                 },
                 else => {
                     return self.addError(
@@ -104,10 +107,50 @@ pub const Parser = struct {
                 self.advance();
                 return try self.parsePrint();
             },
+            Token.Type.LEFT_BRACE => {
+                self.advance();
+                self.depth += 1;
+                return try self.parseBlockStatements();
+            },
+            Token.Type.RIGHT_BRACE => {
+                self.advance();
+                return try self.parseStatementOrExpression();
+            },
             else => {
                 return try self.parseExpression();
             },
         }
+    }
+
+    fn parseBlockStatements(self: *Self) Error!NodeIndex {
+        var statements = std.ArrayList(NodeIndex).init(self.allocator);
+        defer statements.deinit();
+
+        while (!self.isAtEndToken()) {
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.SEMICOLON => {
+                    self.advance(); // skipping semicolon
+                },
+                Token.Type.RIGHT_BRACE => {
+                    defer self.depth -= 1;
+                    return try self.addNode(.{
+                        .block = .{
+                            .depth = self.depth,
+                            .statement_indexes = try statements.toOwnedSlice(),
+                        },
+                    });
+                },
+                else => {
+                    const statement_node = try self.parseStatementOrExpression();
+                    try statements.append(statement_node);
+                },
+            }
+        }
+        return self.addError(
+            AstError.Type.expected_token,
+            Token.Type.RIGHT_BRACE,
+        );
     }
 
     fn parsePrint(self: *Self) Error!NodeIndex {

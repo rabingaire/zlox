@@ -110,6 +110,19 @@ pub const Interpreter = struct {
                 );
                 return "";
             },
+            .block => |block_node| {
+                var result: []const u8 = "";
+                for (block_node.statement_indexes, 1..) |statement_index, i| {
+                    result = try self.evaluateNode(
+                        statement_index,
+                        nodes,
+                    );
+                    if (block_node.statement_indexes.len != i) {
+                        self.allocator.free(result);
+                    }
+                }
+                return result;
+            },
             // Expression
             else => {
                 self.result_literal = try self.evaluateExpression(
