@@ -621,6 +621,40 @@ test "check if interpreter evaluates to correct value" {
     ,
         "false",
     );
+
+    try testEvaluate(
+        \\ var a = "hello";
+        \\ {
+        \\      print a; 
+        \\ }
+    ,
+        "hello",
+    );
+
+    try testEvaluate(
+        \\ var a = "hello";
+        \\ {
+        \\      var a = "world"
+        \\      {
+        \\          print a;
+        \\      } 
+        \\ }
+    ,
+        "world",
+    );
+
+    try testEvaluate(
+        \\ var a = 10;
+        \\ {
+        \\      var a = 20
+        \\      {
+        \\          var a = a + 3;
+        \\      } 
+        \\ }
+        \\ print a
+    ,
+        "10",
+    );
 }
 
 test "check if interpreter detects runtime errors correctly" {
@@ -667,6 +701,21 @@ test "check if interpreter detects runtime errors correctly" {
     try testError(
         \\ var a = "world"
         \\ print a + a + b
+    ,
+        &.{.undefined_variable},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ {
+        \\      {
+        \\          var b = "hello"
+        \\      }
+        \\      
+        \\      {
+        \\          print b
+        \\      }
+        \\ }
     ,
         &.{.undefined_variable},
     );

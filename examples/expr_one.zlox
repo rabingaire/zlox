@@ -1,6 +1,2 @@
-var a = "Hello";
-{
-  // var a = "cat";
-  print a;
-}
-print a;
+var a = a + "hello"
+print a

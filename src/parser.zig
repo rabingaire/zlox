@@ -78,17 +78,10 @@ pub const Parser = struct {
             const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
                 Token.Type.EOF => {},
-                Token.Type.SEMICOLON,
-                Token.Type.RIGHT_BRACE,
-                => {
+                Token.Type.SEMICOLON => {
                     self.advance();
                 },
-                else => {
-                    return self.addError(
-                        AstError.Type.expected_token,
-                        Token.Type.SEMICOLON,
-                    );
-                },
+                else => {},
             }
         }
         return try self.addNode(.{
@@ -112,10 +105,6 @@ pub const Parser = struct {
                 self.depth += 1;
                 return try self.parseBlockStatements();
             },
-            Token.Type.RIGHT_BRACE => {
-                self.advance();
-                return try self.parseStatementOrExpression();
-            },
             else => {
                 return try self.parseExpression();
             },
@@ -133,7 +122,10 @@ pub const Parser = struct {
                     self.advance(); // skipping semicolon
                 },
                 Token.Type.RIGHT_BRACE => {
-                    defer self.depth -= 1;
+                    defer {
+                        self.depth -= 1;
+                        self.advance();
+                    }
                     return try self.addNode(.{
                         .block = .{
                             .depth = self.depth,
@@ -464,6 +456,28 @@ test "check if parser detects parse errors correctly" {
 
     try testError(
         \\ print ("world" + "cat";
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ { print "world"
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ } print "world"
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ {
+        \\ print "world"
+        \\ {
+        \\      print "hello"
+        \\ }
     ,
         &.{.expected_token},
     );
