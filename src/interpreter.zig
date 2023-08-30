@@ -1,3 +1,5 @@
+// TODO: refactor this code, abstract repeated code
+
 const std = @import("std");
 const AllocatorError = std.mem.Allocator.Error;
 const builtin = @import("builtin");
@@ -21,7 +23,7 @@ pub const Interpreter = struct {
     result_literal: Literal,
     final_result: []const u8,
     errors: std.ArrayList(RuntimeError),
-    environments: std.ArrayList(*std.StringHashMap(NodeIndex)),
+    environments: std.ArrayList(*std.StringArrayHashMap(Literal)),
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.final_result);
@@ -41,7 +43,7 @@ pub const Interpreter = struct {
             .result_literal = undefined,
             .final_result = undefined,
             .errors = std.ArrayList(RuntimeError).init(tree.allocator),
-            .environments = std.ArrayList(*std.StringHashMap(NodeIndex)).init(tree.allocator),
+            .environments = std.ArrayList(*std.StringArrayHashMap(Literal)).init(tree.allocator),
         };
 
         inter.final_result = inter.evaluateNode(
@@ -81,9 +83,20 @@ pub const Interpreter = struct {
         return switch (node) {
             // Program
             .program => |node_indexes| {
-                var new_environment = std.StringHashMap(NodeIndex).init(self.allocator);
+                var new_environment = std.StringArrayHashMap(Literal).init(self.allocator);
                 try self.environments.append(&new_environment);
-                defer self.environments.pop().deinit();
+                defer {
+                    const environment = self.environments.pop();
+                    for (environment.values()) |value| {
+                        switch (value) {
+                            .string => |s_literal| {
+                                self.allocator.free(s_literal);
+                            },
+                            else => {},
+                        }
+                    }
+                    environment.deinit();
+                }
 
                 var result: []const u8 = "";
                 for (node_indexes, 1..) |program_node_index, i| {
@@ -108,17 +121,32 @@ pub const Interpreter = struct {
                 return result;
             },
             .variable => |var_node| {
+                const value = try self.evaluateExpression(
+                    var_node.value,
+                    nodes,
+                );
                 const environment = self.environments.getLast();
                 try environment.put(
                     Token.toLiteral(self.source, var_node.symbol),
-                    var_node.value,
+                    value,
                 );
                 return "";
             },
             .block => |block_node| {
-                var new_environment = std.StringHashMap(NodeIndex).init(self.allocator);
+                var new_environment = std.StringArrayHashMap(Literal).init(self.allocator);
                 try self.environments.append(&new_environment);
-                defer self.environments.pop().deinit();
+                defer {
+                    const environment = self.environments.pop();
+                    for (environment.values()) |value| {
+                        switch (value) {
+                            .string => |s_literal| {
+                                self.allocator.free(s_literal);
+                            },
+                            else => {},
+                        }
+                    }
+                    environment.deinit();
+                }
 
                 var result: []const u8 = "";
                 for (block_node.statement_indexes, 1..) |statement_index, i| {
@@ -168,10 +196,17 @@ pub const Interpreter = struct {
                             ) orelse {
                                 continue;
                             };
-                            break :blk self.evaluateExpression(
-                                value,
-                                nodes,
-                            );
+
+                            break :blk switch (value) {
+                                .string => |s_literal| Literal{
+                                    .string = try std.fmt.allocPrint(
+                                        self.allocator,
+                                        "{s}",
+                                        .{s_literal},
+                                    ),
+                                },
+                                else => value,
+                            };
                         }
                         return self.addError(
                             .undefined_variable,
@@ -655,6 +690,33 @@ test "check if interpreter evaluates to correct value" {
     ,
         "10",
     );
+
+    try testEvaluate(
+        \\ var a = 10;
+        \\ {
+        \\      var a = 20
+        \\      {
+        \\          var a = a + 3;
+        \\          print a;
+        \\      } 
+        \\ }
+    ,
+        "23",
+    );
+
+    try testEvaluate(
+        \\ var a = 1 - 2 + 3 + (9 - 3)
+        \\ {
+        \\      {
+        \\          var a = "hello"
+        \\          print a
+        \\      }
+        \\      
+        \\      print a + 1
+        \\ }
+    ,
+        "9",
+    );
 }
 
 test "check if interpreter detects runtime errors correctly" {
@@ -710,10 +772,27 @@ test "check if interpreter detects runtime errors correctly" {
         \\ {
         \\      {
         \\          var b = "hello"
+        \\          print b
         \\      }
         \\      
         \\      {
         \\          print b
+        \\      }
+        \\ }
+    ,
+        &.{.undefined_variable},
+    );
+
+    try testError(
+        \\ var a = "world"
+        \\ {
+        \\      {
+        \\          var b = b + "hello"
+        \\          print a
+        \\      }
+        \\      
+        \\      {
+        \\          print a
         \\      }
         \\ }
     ,
