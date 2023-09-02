@@ -183,17 +183,39 @@ pub const Parser = struct {
     }
 
     fn parseExpression(self: *Self) Error!NodeIndex {
-        return try self.equality();
+        return try self.logicalOr();
     }
 
-    fn equality(self: *Self) !NodeIndex {
+    fn logicalOr(self: *Self) !NodeIndex {
+        var expr = try self.logicalAnd();
+        while (true) {
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.OR => {
+                    self.advance();
+                    expr = try self.addNode(
+                        .{
+                            .expression = .{
+                                .binary = .{
+                                    .left = expr,
+                                    .operator = current_token,
+                                    .right = try self.logicalAnd(),
+                                },
+                            },
+                        },
+                    );
+                },
+                else => return expr,
+            }
+        }
+    }
+
+    fn logicalAnd(self: *Self) !NodeIndex {
         var expr = try self.comparison();
         while (true) {
             const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
-                Token.Type.BANG_EQUAL,
-                Token.Type.EQUAL_EQUAL,
-                => {
+                Token.Type.AND => {
                     self.advance();
                     expr = try self.addNode(
                         .{
@@ -217,6 +239,8 @@ pub const Parser = struct {
         while (true) {
             const current_token = self.getCurrentToken();
             switch (current_token.token_type) {
+                Token.Type.BANG_EQUAL,
+                Token.Type.EQUAL_EQUAL,
                 Token.Type.GREATER,
                 Token.Type.GREATER_EQUAL,
                 Token.Type.LESS,
@@ -229,7 +253,7 @@ pub const Parser = struct {
                                 .binary = .{
                                     .left = expr,
                                     .operator = current_token,
-                                    .right = try self.factor(),
+                                    .right = try self.term(),
                                 },
                             },
                         },
@@ -480,6 +504,24 @@ test "check if parser detects parse errors correctly" {
         \\ }
     ,
         &.{.expected_token},
+    );
+
+    try testError(
+        \\ var a = (1 > 2) and
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a = (1 < 2) or
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a = ("Hello" == "World") and (1 == 2) or
+    ,
+        &.{.expected_expression},
     );
 }
 

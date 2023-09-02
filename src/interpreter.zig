@@ -283,6 +283,11 @@ pub const Interpreter = struct {
             right_type,
             @tagName(Literal.string),
         );
+        const is_bool_type = isBothType(
+            left_type,
+            right_type,
+            @tagName(Literal.boolean),
+        );
         switch (operator.token_type) {
             .PLUS => {
                 if (is_number_type) {
@@ -381,6 +386,16 @@ pub const Interpreter = struct {
                 }
 
                 return Literal{ .boolean = isTruthy(left) == isTruthy(right) };
+            },
+            .AND => {
+                if (is_bool_type) {
+                    return Literal{ .boolean = left.boolean and right.boolean };
+                }
+            },
+            .OR => {
+                if (is_bool_type) {
+                    return Literal{ .boolean = left.boolean or right.boolean };
+                }
             },
             else => unreachable,
         }
@@ -716,6 +731,14 @@ test "check if interpreter evaluates to correct value" {
         \\ }
     ,
         "9",
+    );
+
+    try testEvaluate(
+        \\ var v = 3
+        \\ var a = "hello" == "world" or 1 < 2 and 0 < v
+        \\ print a
+    ,
+        "true",
     );
 }
 
