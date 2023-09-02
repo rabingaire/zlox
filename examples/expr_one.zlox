@@ -1,3 +1,7 @@
-var v = 3
-var a = "hello" == "world" or 1 < 2 and 0 < v
-print a
+var a = "Hello";
+print {
+  print a;
+  return {
+    return a + " World";
+  };
+};

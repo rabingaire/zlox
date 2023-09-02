@@ -100,49 +100,10 @@ pub const Parser = struct {
                 self.advance();
                 return try self.parsePrint();
             },
-            Token.Type.LEFT_BRACE => {
-                self.advance();
-                self.depth += 1;
-                return try self.parseBlockStatements();
-            },
             else => {
                 return try self.parseExpression();
             },
         }
-    }
-
-    fn parseBlockStatements(self: *Self) Error!NodeIndex {
-        var statements = std.ArrayList(NodeIndex).init(self.allocator);
-        defer statements.deinit();
-
-        while (!self.isAtEndToken()) {
-            const current_token = self.getCurrentToken();
-            switch (current_token.token_type) {
-                Token.Type.SEMICOLON => {
-                    self.advance(); // skipping semicolon
-                },
-                Token.Type.RIGHT_BRACE => {
-                    defer {
-                        self.depth -= 1;
-                        self.advance();
-                    }
-                    return try self.addNode(.{
-                        .block = .{
-                            .depth = self.depth,
-                            .statement_indexes = try statements.toOwnedSlice(),
-                        },
-                    });
-                },
-                else => {
-                    const statement_node = try self.parseStatementOrExpression();
-                    try statements.append(statement_node);
-                },
-            }
-        }
-        return self.addError(
-            AstError.Type.expected_token,
-            Token.Type.RIGHT_BRACE,
-        );
     }
 
     fn parsePrint(self: *Self) Error!NodeIndex {
@@ -374,6 +335,11 @@ pub const Parser = struct {
                 self.advance();
                 return expr;
             },
+            Token.Type.LEFT_BRACE => {
+                self.advance();
+                self.depth += 1;
+                return try self.parseBlockStatements();
+            },
             Token.Type.IDENTIFIER => blk: {
                 break :blk Node.Expression.Literal{
                     .ident = current_token,
@@ -391,6 +357,62 @@ pub const Parser = struct {
             .{
                 .expression = .{ .literal = literal },
             },
+        );
+    }
+
+    fn parseBlockStatements(self: *Self) Error!NodeIndex {
+        var statements = std.ArrayList(NodeIndex).init(self.allocator);
+        defer statements.deinit();
+
+        var seen_return = false;
+        var return_expression_index: ?NodeIndex = null;
+
+        while (!self.isAtEndToken()) {
+            const current_token = self.getCurrentToken();
+            switch (current_token.token_type) {
+                Token.Type.SEMICOLON => {
+                    self.advance(); // skipping semicolon
+                },
+                Token.Type.RETURN => {
+                    defer {
+                        seen_return = true;
+                    }
+                    self.advance();
+                    return_expression_index = try self.parseExpression();
+                },
+                Token.Type.RIGHT_BRACE => {
+                    defer {
+                        self.depth -= 1;
+                        self.advance();
+                    }
+
+                    return try self.addNode(.{
+                        .expression = .{
+                            .block = .{
+                                .depth = self.depth,
+                                .statement_indexes = try statements.toOwnedSlice(),
+                                .return_index = return_expression_index orelse try self.addNode(.{
+                                    .expression = .{
+                                        .literal = .{
+                                            .nil = {},
+                                        },
+                                    },
+                                }),
+                            },
+                        },
+                    });
+                },
+                else => {
+                    const statement_node = try self.parseStatementOrExpression();
+                    if (!seen_return) {
+                        try statements.append(statement_node);
+                    }
+                },
+            }
+        }
+        return self.addError(
+            AstError.Type.expected_token,
+            Token.Type.RIGHT_BRACE,
         );
     }
 

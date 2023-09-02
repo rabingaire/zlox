@@ -12,7 +12,7 @@ const Literal = Node.Expression.Literal;
 const lexer = @import("lexer.zig");
 const Token = lexer.Token;
 
-pub const Error = error{EvalError} || AllocatorError;
+pub const Error = error{ EvalError, PrintError } || AllocatorError;
 
 pub const Interpreter = struct {
     const Self = @This();
@@ -70,7 +70,9 @@ pub const Interpreter = struct {
     fn print(result: []const u8) !void {
         const stdout = std.io.getStdOut().writer();
         if (!builtin.is_test) {
-            try stdout.print("{s}\n", .{result});
+            stdout.print("{s}\n", .{result}) catch {
+                return error.PrintError;
+            };
         }
     }
 
@@ -78,7 +80,7 @@ pub const Interpreter = struct {
         self: *Self,
         node_index: NodeIndex,
         nodes: []Node,
-    ) ![]const u8 {
+    ) Error![]const u8 {
         const node = nodes[node_index];
         return switch (node) {
             // Program
@@ -131,34 +133,6 @@ pub const Interpreter = struct {
                     value,
                 );
                 return "";
-            },
-            .block => |block_node| {
-                var new_environment = std.StringArrayHashMap(Literal).init(self.allocator);
-                try self.environments.append(&new_environment);
-                defer {
-                    const environment = self.environments.pop();
-                    for (environment.values()) |value| {
-                        switch (value) {
-                            .string => |s_literal| {
-                                self.allocator.free(s_literal);
-                            },
-                            else => {},
-                        }
-                    }
-                    environment.deinit();
-                }
-
-                var result: []const u8 = "";
-                for (block_node.statement_indexes, 1..) |statement_index, i| {
-                    result = try self.evaluateNode(
-                        statement_index,
-                        nodes,
-                    );
-                    if (block_node.statement_indexes.len != i) {
-                        self.allocator.free(result);
-                    }
-                }
-                return result;
             },
             // Expression
             else => {
@@ -230,6 +204,32 @@ pub const Interpreter = struct {
                     b_node,
                     nodes,
                 ),
+                .block => |block_node| {
+                    var new_environment = std.StringArrayHashMap(Literal).init(self.allocator);
+                    try self.environments.append(&new_environment);
+                    defer {
+                        const environment = self.environments.pop();
+                        for (environment.values()) |value| {
+                            switch (value) {
+                                .string => |s_literal| {
+                                    self.allocator.free(s_literal);
+                                },
+                                else => {},
+                            }
+                        }
+                        environment.deinit();
+                    }
+
+                    for (block_node.statement_indexes) |statement_index| {
+                        const result = try self.evaluateNode(
+                            statement_index,
+                            nodes,
+                        );
+                        defer self.allocator.free(result);
+                    }
+
+                    return try self.evaluateExpression(block_node.return_index, nodes);
+                },
             },
             else => unreachable,
         };
@@ -240,7 +240,7 @@ pub const Interpreter = struct {
         self: *Self,
         expr: Node.Expression.Binary,
         nodes: []Node,
-    ) !Literal {
+    ) Error!Literal {
         const left = try self.evaluateExpression(
             expr.left,
             nodes,
@@ -464,7 +464,7 @@ pub const Interpreter = struct {
         self: *Self,
         expr: Node.Expression.Unary,
         nodes: []Node,
-    ) !Literal {
+    ) Error!Literal {
         const right = try self.evaluateExpression(
             expr.right,
             nodes,
@@ -674,8 +674,9 @@ test "check if interpreter evaluates to correct value" {
 
     try testEvaluate(
         \\ var a = "hello";
-        \\ {
+        \\ print {
         \\      print a; 
+        \\      return a;
         \\ }
     ,
         "hello",
@@ -683,11 +684,12 @@ test "check if interpreter evaluates to correct value" {
 
     try testEvaluate(
         \\ var a = "hello";
-        \\ {
+        \\ print {
         \\      var a = "world"
-        \\      {
+        \\      return {
         \\          print a;
-        \\      } 
+        \\          return a;
+        \\      }
         \\ }
     ,
         "world",
@@ -708,11 +710,12 @@ test "check if interpreter evaluates to correct value" {
 
     try testEvaluate(
         \\ var a = 10;
-        \\ {
+        \\ print {
         \\      var a = 20
-        \\      {
+        \\      return {
         \\          var a = a + 3;
         \\          print a;
+        \\          return a;
         \\      } 
         \\ }
     ,
@@ -721,13 +724,13 @@ test "check if interpreter evaluates to correct value" {
 
     try testEvaluate(
         \\ var a = 1 - 2 + 3 + (9 - 3)
-        \\ {
+        \\ print {
         \\      {
         \\          var a = "hello"
         \\          print a
         \\      }
         \\      
-        \\      print a + 1
+        \\      return a + 1
         \\ }
     ,
         "9",
