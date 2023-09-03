@@ -97,6 +97,7 @@ pub const Node = union(enum) {
         unary: Unary,
         binary: Binary,
         block: Block,
+        conditional: Conditional,
 
         pub const Literal = union(enum) {
             number: f64,
@@ -121,10 +122,16 @@ pub const Node = union(enum) {
             right: NodeIndex,
         };
 
-        const Block = struct {
+        pub const Block = struct {
             depth: u32,
             statement_indexes: []NodeIndex,
             return_index: NodeIndex,
+        };
+
+        pub const Conditional = struct {
+            condition: NodeIndex,
+            if_expression: NodeIndex, // Expression
+            else_expression: NodeIndex, // Expression
         };
     };
 
@@ -325,6 +332,35 @@ pub const Node = union(enum) {
                     );
                     defer allocator.free(program);
                     break :blk new_program;
+                },
+                .conditional => |c_node| blk: {
+                    const condition = try debugPrint(
+                        c_node.condition,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(condition);
+                    const if_expression = try debugPrint(
+                        c_node.if_expression,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(if_expression);
+                    const else_expression = try debugPrint(
+                        c_node.else_expression,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(else_expression);
+
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "if {s} {s} else {s}",
+                        .{ condition, if_expression, else_expression },
+                    );
                 },
             },
         };

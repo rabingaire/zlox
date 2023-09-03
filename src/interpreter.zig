@@ -230,6 +230,21 @@ pub const Interpreter = struct {
 
                     return try self.evaluateExpression(block_node.return_index, nodes);
                 },
+                .conditional => |c_node| {
+                    const condition = try self.evaluateExpression(c_node.condition, nodes);
+                    defer {
+                        switch (condition) {
+                            .string => |s_literal| self.allocator.free(s_literal),
+                            else => {},
+                        }
+                    }
+
+                    if (isTruthy(condition)) {
+                        return try self.evaluateExpression(c_node.if_expression, nodes);
+                    } else {
+                        return try self.evaluateExpression(c_node.else_expression, nodes);
+                    }
+                },
             },
             else => unreachable,
         };
@@ -742,6 +757,53 @@ test "check if interpreter evaluates to correct value" {
         \\ print a
     ,
         "true",
+    );
+
+    try testEvaluate(
+        \\ var a = if ("hello" == "hello") {
+        \\   return "world"
+        \\ } else {
+        \\   return "earth"
+        \\ }
+        \\ print a
+    ,
+        "world",
+    );
+
+    try testEvaluate(
+        \\ var x = 3
+        \\ var y = 4
+        \\ var a = if (1 >= 1 and y >= 2) {
+        \\   return x + y
+        \\ } else {
+        \\   return x - y
+        \\ }
+        \\ print a
+    ,
+        "7",
+    );
+
+    try testEvaluate(
+        \\ var x = 3
+        \\ var y = 4
+        \\ var a = if (1 >= 1 and y >= 2) "hello" + " world" else "hello moon"
+        \\ print a
+    ,
+        "hello world",
+    );
+
+    try testEvaluate(
+        \\ var a = if (false) "hello" + " world"
+        \\ print a
+    ,
+        "nil",
+    );
+
+    try testEvaluate(
+        \\ var a = if (true) {} else 4
+        \\ print a
+    ,
+        "nil",
     );
 }
 

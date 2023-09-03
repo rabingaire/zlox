@@ -340,6 +340,56 @@ pub const Parser = struct {
                 self.depth += 1;
                 return try self.parseBlockStatements();
             },
+            Token.Type.IF => {
+                self.advance();
+
+                var l_paren_token = self.getCurrentToken();
+                if (l_paren_token.token_type != Token.Type.LEFT_PAREN) {
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.LEFT_PAREN,
+                    );
+                }
+                self.advance();
+
+                const condition = try self.parseExpression();
+
+                var r_paren_token = self.getCurrentToken();
+                if (r_paren_token.token_type != Token.Type.RIGHT_PAREN) {
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.RIGHT_PAREN,
+                    );
+                }
+                self.advance();
+
+                const if_expression = try self.parseExpression();
+
+                var else_expression: NodeIndex = undefined;
+                var else_token = self.getCurrentToken();
+                if (else_token.token_type == Token.Type.ELSE) {
+                    self.advance();
+                    else_expression = try self.parseExpression();
+                } else {
+                    else_expression = try self.addNode(.{
+                        .expression = .{
+                            .literal = .{
+                                .nil = {},
+                            },
+                        },
+                    });
+                }
+
+                return try self.addNode(.{
+                    .expression = .{
+                        .conditional = .{
+                            .condition = condition,
+                            .if_expression = if_expression,
+                            .else_expression = else_expression,
+                        },
+                    },
+                });
+            },
             Token.Type.IDENTIFIER => blk: {
                 break :blk Node.Expression.Literal{
                     .ident = current_token,
@@ -542,6 +592,30 @@ test "check if parser detects parse errors correctly" {
 
     try testError(
         \\ var a = ("Hello" == "World") and (1 == 2) or
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a = if "Hello" == "World") 42
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ var a = if ("Hello" == "World" 34
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ var a = if ("Hello" == "World") else 32
+    ,
+        &.{.expected_expression},
+    );
+
+    try testError(
+        \\ var a = if ("Hello" == "World") 2 + 2 else
     ,
         &.{.expected_expression},
     );

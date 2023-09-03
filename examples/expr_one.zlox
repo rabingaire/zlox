@@ -1,7 +1,9 @@
-var a = "Hello";
-print {
-  print a;
-  return {
-    return a + " World";
-  };
-};
+var a = if (true) {
+  var a = 3
+  var b = 4
+  return a + b
+}
+
+if (a != nil) {
+  print "a has value"
+}
