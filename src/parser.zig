@@ -144,7 +144,33 @@ pub const Parser = struct {
     }
 
     fn parseExpression(self: *Self) Error!NodeIndex {
-        return try self.logicalOr();
+        return try self.assignment();
+    }
+
+    fn assignment(self: *Self) Error!NodeIndex {
+        const current_token = self.getCurrentToken();
+        switch (current_token.token_type) {
+            Token.Type.IDENTIFIER => {
+                const next_token = self.peekToken();
+                if (next_token.token_type == Token.Type.EQUAL) {
+                    self.advance(); // skipping identifier
+                    self.advance(); // skipping equal
+                    const value = try self.logicalOr();
+                    return try self.addNode(
+                        .{
+                            .expression = .{
+                                .assignment = .{
+                                    .symbol = current_token,
+                                    .value = value,
+                                },
+                            },
+                        },
+                    );
+                }
+                return try self.logicalOr();
+            },
+            else => return try self.logicalOr(),
+        }
     }
 
     fn logicalOr(self: *Self) !NodeIndex {
@@ -390,6 +416,40 @@ pub const Parser = struct {
                     },
                 });
             },
+            Token.Type.WHILE => {
+                self.advance();
+
+                var l_paren_token = self.getCurrentToken();
+                if (l_paren_token.token_type != Token.Type.LEFT_PAREN) {
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.LEFT_PAREN,
+                    );
+                }
+                self.advance();
+
+                const condition = try self.parseExpression();
+
+                var r_paren_token = self.getCurrentToken();
+                if (r_paren_token.token_type != Token.Type.RIGHT_PAREN) {
+                    return self.addError(
+                        AstError.Type.expected_token,
+                        Token.Type.RIGHT_PAREN,
+                    );
+                }
+                self.advance();
+
+                const body_expression = try self.parseExpression();
+
+                return try self.addNode(.{
+                    .expression = .{
+                        .while_loop = .{
+                            .condition = condition,
+                            .body = body_expression,
+                        },
+                    },
+                });
+            },
             Token.Type.IDENTIFIER => blk: {
                 break :blk Node.Expression.Literal{
                     .ident = current_token,
@@ -489,6 +549,11 @@ pub const Parser = struct {
         if (!isAtEndToken(self)) {
             self.current += 1;
         }
+    }
+
+    fn peekToken(self: *Self) Token {
+        if (self.isAtEndToken()) return self.getCurrentToken();
+        return self.tokens[self.current + 1];
     }
 
     fn isAtEndToken(self: *Self) bool {
@@ -616,6 +681,53 @@ test "check if parser detects parse errors correctly" {
 
     try testError(
         \\ var a = if ("Hello" == "World") 2 + 2 else
+    ,
+        &.{.expected_expression},
+    );
+    try testError(
+        \\ var a = 1; a = a = 5;
+    ,
+        &.{.expected_expression},
+    );
+    try testError(
+        \\ var a = 1; a + 5 = 4;
+    ,
+        &.{.expected_expression},
+    );
+    try testError(
+        \\ var a = 1;
+        \\ while {}
+    ,
+        &.{.expected_token},
+    );
+    try testError(
+        \\ var a = 1;
+        \\ while (a < 5 {}
+    ,
+        &.{.expected_token},
+    );
+    try testError(
+        \\ var a = 1;
+        \\ while a < 5)
+    ,
+        &.{.expected_token},
+    );
+    try testError(
+        \\ var a = 1;
+        \\ while (a < 5)
+    ,
+        &.{.expected_expression},
+    );
+    try testError(
+        \\ var a = 1;
+        \\ while (a < 5) {
+    ,
+        &.{.expected_token},
+    );
+
+    try testError(
+        \\ var a = 1;
+        \\ while (a < 5) }
     ,
         &.{.expected_expression},
     );

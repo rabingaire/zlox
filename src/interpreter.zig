@@ -230,6 +230,51 @@ pub const Interpreter = struct {
 
                     return try self.evaluateExpression(block_node.return_index, nodes);
                 },
+                .assignment => |a_node| blk: { // TODO: similar to variable
+                    const value = try self.evaluateExpression(
+                        a_node.value,
+                        nodes,
+                    );
+
+                    var idx = self.environments.items.len;
+                    while (idx > 0) : (idx -= 1) {
+                        const environment = self.environments.items[idx - 1];
+                        const previous_value = environment.get(
+                            Token.toLiteral(self.source, a_node.symbol),
+                        ) orelse {
+                            continue;
+                        };
+                        defer {
+                            switch (previous_value) {
+                                .string => |s_literal| self.allocator.free(s_literal),
+                                else => {},
+                            }
+                        }
+
+                        try environment.put(
+                            Token.toLiteral(self.source, a_node.symbol),
+                            value,
+                        );
+                        break :blk switch (value) {
+                            .string => |s_literal| Literal{
+                                .string = try std.fmt.allocPrint(
+                                    self.allocator,
+                                    "{s}",
+                                    .{s_literal},
+                                ),
+                            },
+                            else => value,
+                        };
+                    }
+
+                    return self.addError(
+                        .undefined_variable,
+                        a_node.symbol,
+                        RuntimeError.DataTypeInfo{
+                            .right = "",
+                        },
+                    );
+                },
                 .conditional => |c_node| {
                     const condition = try self.evaluateExpression(c_node.condition, nodes);
                     defer {
@@ -244,6 +289,27 @@ pub const Interpreter = struct {
                     } else {
                         return try self.evaluateExpression(c_node.else_expression, nodes);
                     }
+                },
+                .while_loop => |w_node| {
+                    var condition = try self.evaluateExpression(w_node.condition, nodes);
+                    defer {
+                        switch (condition) {
+                            .string => |s_literal| self.allocator.free(s_literal),
+                            else => {},
+                        }
+                    }
+
+                    var return_value: Literal = undefined;
+                    while (isTruthy(condition)) {
+                        switch (return_value) {
+                            .string => |s_literal| self.allocator.free(s_literal),
+                            else => {},
+                        }
+                        return_value = try self.evaluateExpression(w_node.body, nodes);
+                        condition = try self.evaluateExpression(w_node.condition, nodes);
+                    }
+
+                    return return_value;
                 },
             },
             else => unreachable,
@@ -805,6 +871,20 @@ test "check if interpreter evaluates to correct value" {
     ,
         "nil",
     );
+
+    try testEvaluate(
+        \\ var a = 0; var b = ""
+        \\ while (a <= 10) { b = b + ">"; a = a + 1; }
+        \\ print b
+    ,
+        ">>>>>>>>>>>",
+    );
+
+    try testEvaluate(
+        \\ var a = 0;
+        \\ var result = while (a <= 10) { var b = "test"; a = a + 1; return b}
+        \\ print result
+    , "test");
 }
 
 test "check if interpreter detects runtime errors correctly" {
@@ -883,6 +963,20 @@ test "check if interpreter detects runtime errors correctly" {
         \\          print a
         \\      }
         \\ }
+    ,
+        &.{.undefined_variable},
+    );
+
+    try testError(
+        \\ var a = 1
+        \\ while (true) { a = a + true }
+    ,
+        &.{.invalid_binary_operation},
+    );
+
+    try testError(
+        \\ var a = 1
+        \\ while (true) { b = b + 2 }
     ,
         &.{.undefined_variable},
     );

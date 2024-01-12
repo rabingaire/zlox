@@ -1,9 +1,11 @@
-var a = if (true) {
-  var a = 3
-  var b = 4
-  return a + b
+var a = 0
+var b = ""
+var c = 0
+while (a < 3) c = c + {
+  var c = 1
+  b = b + ">"
+  a = a + 1
+  return c
 }
-
-if (a != nil) {
-  print "a has value"
-}
+print b
+print c

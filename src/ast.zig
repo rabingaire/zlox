@@ -97,7 +97,9 @@ pub const Node = union(enum) {
         unary: Unary,
         binary: Binary,
         block: Block,
+        assignment: Assignment,
         conditional: Conditional,
+        while_loop: WhileLoop,
 
         pub const Literal = union(enum) {
             number: f64,
@@ -128,10 +130,20 @@ pub const Node = union(enum) {
             return_index: NodeIndex,
         };
 
+        pub const Assignment = struct {
+            symbol: Token,
+            value: NodeIndex, // Expression
+        };
+
         pub const Conditional = struct {
             condition: NodeIndex,
             if_expression: NodeIndex, // Expression
             else_expression: NodeIndex, // Expression
+        };
+
+        pub const WhileLoop = struct {
+            condition: NodeIndex,
+            body: NodeIndex, // Expression
         };
     };
 
@@ -333,6 +345,20 @@ pub const Node = union(enum) {
                     defer allocator.free(program);
                     break :blk new_program;
                 },
+                .assignment => |a_node| blk: { // TODO: similar to variable
+                    const value = try debugPrint(
+                        a_node.value,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(value);
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "{s} = {s}",
+                        .{ Token.toLiteral(source, a_node.symbol), value },
+                    );
+                },
                 .conditional => |c_node| blk: {
                     const condition = try debugPrint(
                         c_node.condition,
@@ -360,6 +386,28 @@ pub const Node = union(enum) {
                         allocator,
                         "if {s} {s} else {s}",
                         .{ condition, if_expression, else_expression },
+                    );
+                },
+                .while_loop => |w_node| blk: {
+                    const condition = try debugPrint(
+                        w_node.condition,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(condition);
+                    const body_expression = try debugPrint(
+                        w_node.body,
+                        nodes,
+                        allocator,
+                        source,
+                    );
+                    defer allocator.free(body_expression);
+
+                    break :blk try std.fmt.allocPrint(
+                        allocator,
+                        "while {s} {s}",
+                        .{ condition, body_expression },
                     );
                 },
             },
